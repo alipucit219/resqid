@@ -6,7 +6,12 @@ import {
 } from "@nestjs/common";
 import { createHash, randomBytes } from "crypto";
 import { HashService, EmailService } from "../../../shared/services";
-import { ChangePasswordDto, LoginDto, ResetPasswordDto } from "../dtos";
+import {
+  ChangePasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from "../dtos";
 import { LoginSessionService } from "./login-session.service";
 import { AuthTokenService } from "./auth-token.service";
 import { IAuthenticatedUserPayload } from "../types/auth.types";
@@ -64,6 +69,49 @@ export class AuthService {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
+        phoneNumber: user.phoneNumber ?? null,
+        dateOfBirth: user.dateOfBirth ?? null,
+        gender: user.gender ?? null,
+        role: user.role,
+        isActive: user.isActive,
+      },
+    };
+  }
+
+  async register(body: RegisterDto, ipAddress?: string, browser?: string) {
+    const user = await this.userService.createSelfRegisteredUser({
+      email: body.email,
+      fullName: body.fullName,
+      password: body.password,
+      phoneNumber: body.phoneNumber,
+      dateOfBirth: body.dateOfBirth,
+      gender: body.gender,
+    });
+
+    const session = await this.loginSessionService.create({
+      userId: user.id,
+      isAuthenticated: true,
+      ipAddress,
+      userAgent: browser,
+    });
+
+    const jwtPayload: IAuthenticatedUserPayload = {
+      userId: user.id,
+      sessionId: session.id,
+    };
+
+    const accessToken = this.authTokenService.sign(jwtPayload);
+
+    return {
+      message: `${user.fullName} account created successfully.`,
+      accessToken,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber ?? null,
+        dateOfBirth: user.dateOfBirth ?? null,
+        gender: user.gender ?? null,
         role: user.role,
         isActive: user.isActive,
       },
@@ -182,4 +230,3 @@ export class AuthService {
     return await this.loginSessionService.deleteExpiredSessions();
   }
 }
-

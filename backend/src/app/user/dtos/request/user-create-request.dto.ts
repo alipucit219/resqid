@@ -1,6 +1,15 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import {
+  IsBoolean,
+  IsDateString,
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+} from "class-validator";
 import { trim, lowerCase } from "src/shared/helpers/string";
 import { Role } from "src/app/auth/enums/role.enum";
 
@@ -36,6 +45,39 @@ export class UserCreateRequestDto {
   @IsOptional()
   @IsIn(Object.values(Role))
   role?: Role = Role.USER;
+
+  @ApiProperty({
+    name: "phoneNumber",
+    type: String,
+    required: false,
+  })
+  @IsOptional()
+  @IsString({ message: "Phone number should be a string" })
+  @Transform(({ value }) => (value ? trim(value) : value))
+  @Matches(/^\+?[0-9()\-\s]{7,20}$/, {
+    message: "Phone number format is invalid",
+  })
+  phoneNumber?: string;
+
+  @ApiProperty({
+    name: "dateOfBirth",
+    type: String,
+    required: false,
+  })
+  @IsOptional()
+  @IsDateString({}, { message: "Date of birth must be a valid ISO date" })
+  dateOfBirth?: string;
+
+  @ApiProperty({
+    name: "gender",
+    type: String,
+    required: false,
+  })
+  @IsOptional()
+  @IsString({ message: "Gender should be a string" })
+  @Transform(({ value }) => (value ? trim(lowerCase(value)) : value))
+  @IsIn(["male", "female", "other"])
+  gender?: string;
 
   @ApiProperty({
     name: "isActive",

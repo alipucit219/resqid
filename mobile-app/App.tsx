@@ -1,104 +1,266 @@
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
+import * as Location from "expo-location";
+import * as SQLite from "expo-sqlite";
+import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-type TabKey = "profile" | "summary" | "contacts" | "qrpanic";
+type AuthScreen = "login" | "register" | "forgot" | "reset" | "public" | "offline";
+type Tab = "home" | "profile" | "qr" | "contacts";
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
+type Gender = "male" | "female" | "other";
+type StatusTone = "success" | "error" | "info";
+type IconName = ComponentProps<typeof Ionicons>["name"];
 
-type Contact = {
+type User = {
   id: string;
-  name: string;
-  phoneNumber: string;
-  relationship?: string;
-  isPrimary?: boolean;
+  fullName: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  phoneNumber?: string | null;
+  dateOfBirth?: string | null;
+  gender?: Gender | null;
+};
+type Contact = { id: string; name: string; phoneNumber: string; relationship?: string | null; isPrimary?: boolean };
+type Profile = {
+  bloodGroup: string;
+  allergies: string[];
+  chronicConditions: string[];
+  medications: string[];
+  emergencyNotes: string;
+  dateOfBirth: string;
+  gender: string;
+};
+type Summary = {
+  hospitalName: string;
+  doctorName: string;
+  treatmentDuration: string;
+  treatmentStatus: string;
+  currentMedications: string[];
+  notes: string;
+};
+type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
+type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Contact[]; qr: QrData | null; savedAt: string };
+type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
+type QueueRow = { id: number; kind: QueueKind; payload: string };
+
+const resolveApiBase = () => {
+  const envBase = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL;
+  const candidate = (envBase || "http://192.168.1.18:8000/").replace(/\/$/, "");
+  return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
+};
+const API = resolveApiBase();
+
+const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const GENDERS: Gender[] = ["male", "female", "other"];
+const STATUS_AUTO_HIDE_MS = 3500;
+const EMPTY_PROFILE: Profile = {
+  bloodGroup: "",
+  allergies: [],
+  chronicConditions: [],
+  medications: [],
+  emergencyNotes: "",
+  dateOfBirth: "",
+  gender: "",
+};
+const EMPTY_SUMMARY: Summary = {
+  hospitalName: "",
+  doctorName: "",
+  treatmentDuration: "",
+  treatmentStatus: "",
+  currentMedications: [],
+  notes: "",
 };
 
-const defaultBaseUrl = "https://5bb8-39-34-173-21.ngrok-free.app/v2";
-const HARDCODED_ACCESS_TOKEN = "";
-const HARDCODED_USER_NAME = "Admin";
+const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x || "").trim()).filter(Boolean) : []);
+const asDate = (v: unknown) => {
+  const d = new Date(String(v || ""));
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+};
+const tokenFrom = (v: string) =>
+  v.includes("/emergency-access/")
+    ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
+    : v.trim();
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
+const netErr = (e: unknown) => /network request failed|fetch failed|failed to fetch/i.test(errMsg(e));
+const labelCount = (count: number, singular: string, plural?: string) =>
+  `${count} ${count === 1 ? singular : plural || `${singular}s`}`;
+const toContactBody = (payload: any) => ({
+  name: String(payload?.name || "").trim(),
+  phoneNumber: String(payload?.phoneNumber || "").trim(),
+  relationship: payload?.relationship ? String(payload.relationship).trim() : undefined,
+  isPrimary: Boolean(payload?.isPrimary),
+});
 
-const splitCsv = (value: string) =>
-  value
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-
-const joinCsv = (values?: string[]) => (values || []).join(", ");
-
-async function api<T>(
-  baseUrl: string,
-  path: string,
-  method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
-  token?: string,
-  body?: unknown,
-): Promise<T> {
+async function api<T>(path: string, method: Method = "GET", token?: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const res = await fetch(`${API}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-
-  let payload: unknown = null;
+  let data: any = null;
   try {
-    payload = await response.json();
+    data = await res.json();
   } catch {
-    payload = null;
+    data = null;
   }
 
-  if (!response.ok) {
-    const message = (payload as { message?: string | string[] } | null)?.message;
-    if (Array.isArray(message)) throw new Error(message.join(", "));
-    if (typeof message === "string" && message.trim()) throw new Error(message);
-    throw new Error(`${method} ${path} failed (${response.status})`);
+  if (!res.ok) {
+    throw new Error(
+      Array.isArray(data?.message)
+        ? data.message.join(", ")
+        : data?.message || `${method} ${path} failed (${res.status})`,
+    );
   }
+  return data as T;
+}
 
-  return payload as T;
+async function initDb(db: SQLite.SQLiteDatabase) {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS local_store (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sync_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+}
+async function setKV(db: SQLite.SQLiteDatabase, key: string, value: unknown) {
+  await db.runAsync(
+    `INSERT INTO local_store (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    key,
+    JSON.stringify(value),
+    Date.now(),
+  );
+}
+async function getKV<T>(db: SQLite.SQLiteDatabase, key: string): Promise<T | null> {
+  const row = await db.getFirstAsync<{ value: string }>("SELECT value FROM local_store WHERE key = ?", key);
+  if (!row?.value) return null;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return null;
+  }
+}
+async function delKV(db: SQLite.SQLiteDatabase, key: string) {
+  await db.runAsync("DELETE FROM local_store WHERE key = ?", key);
+}
+async function addQ(db: SQLite.SQLiteDatabase, kind: QueueKind, payload: unknown) {
+  await db.runAsync("INSERT INTO sync_queue (kind, payload, created_at) VALUES (?, ?, ?)", kind, JSON.stringify(payload), Date.now());
+}
+async function listQ(db: SQLite.SQLiteDatabase): Promise<QueueRow[]> {
+  return await db.getAllAsync<QueueRow>("SELECT id, kind, payload FROM sync_queue ORDER BY id ASC");
+}
+async function delQ(db: SQLite.SQLiteDatabase, id: number) {
+  await db.runAsync("DELETE FROM sync_queue WHERE id = ?", id);
+}
+
+type FieldProps = {
+  icon: IconName;
+  placeholder: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  secureTextEntry?: boolean;
+  keyboardType?: ComponentProps<typeof TextInput>["keyboardType"];
+  autoCapitalize?: ComponentProps<typeof TextInput>["autoCapitalize"];
+  right?: ReactNode;
+  multiline?: boolean;
+};
+
+function Field({
+  icon,
+  placeholder,
+  value,
+  onChangeText,
+  secureTextEntry,
+  keyboardType,
+  autoCapitalize = "none",
+  right,
+  multiline = false,
+}: FieldProps) {
+  return (
+    <View style={[s.fieldWrap, multiline && s.fieldWrapMulti]}>
+      <Ionicons name={icon} size={20} color="#6b7280" />
+      <TextInput
+        style={[s.fieldInput, multiline && s.fieldInputMulti]}
+        placeholder={placeholder}
+        placeholderTextColor="#9ca3af"
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        multiline={multiline}
+      />
+      {right}
+    </View>
+  );
 }
 
 export default function App() {
-  const baseUrl = defaultBaseUrl;
-  const [email, setEmail] = useState("admin@gmail.com");
-  const [password, setPassword] = useState("Pakistan1");
-  const [token, setToken] = useState(HARDCODED_ACCESS_TOKEN);
-  const [userName, setUserName] = useState(
-    HARDCODED_ACCESS_TOKEN ? HARDCODED_USER_NAME : "",
-  );
-  const [tab, setTab] = useState<TabKey>("profile");
+  const [db, setDb] = useState<SQLite.SQLiteDatabase | null>(null);
+  const [ready, setReady] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [qCount, setQCount] = useState(0);
+  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
+  const [tab, setTab] = useState<Tab>("home");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [statusTone, setStatusTone] = useState<StatusTone>("info");
+  const [token, setToken] = useState("");
+  const [user, setUser] = useState<User | null>(null);
 
-  const [profile, setProfile] = useState({
-    bloodGroup: "",
-    allergies: "",
-    chronicConditions: "",
-    medications: "",
-    pastSurgeries: "",
-    emergencyNotes: "",
+  const [login, setLogin] = useState({ email: "", password: "" });
+  const [register, setRegister] = useState({
+    fullName: "",
+    email: "",
+    phoneNumber: "",
     dateOfBirth: "",
     gender: "",
+    password: "",
+    confirmPassword: "",
   });
-  const [summary, setSummary] = useState({
-    hospitalName: "",
-    doctorName: "",
-    treatmentDuration: "",
-    treatmentStatus: "",
-    currentMedications: "",
-    notes: "",
-  });
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [reset, setReset] = useState({ token: "", newPassword: "", confirmPassword: "" });
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirm, setShowRegConfirm] = useState(false);
+
+  const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
+  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [qr, setQr] = useState<QrData | null>(null);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+
+  const [aDraft, setADraft] = useState("");
+  const [cDraft, setCDraft] = useState("");
+  const [mDraft, setMDraft] = useState("");
+  const [smDraft, setSmDraft] = useState("");
+
   const [contactForm, setContactForm] = useState({
     id: "",
     name: "",
@@ -106,115 +268,369 @@ export default function App() {
     relationship: "",
     isPrimary: false,
   });
-  const [qr, setQr] = useState<{
-    token?: string;
-    emergencyUrl?: string;
-    qrCodeDataUrl?: string;
-  } | null>(null);
-  const [panic, setPanic] = useState({
-    latitude: "",
-    longitude: "",
-    message: "",
-    result: "",
-  });
+  const [showContactForm, setShowContactForm] = useState(false);
+
+  const [showSos, setShowSos] = useState(false);
+  const [panicMsg, setPanicMsg] = useState("");
+  const [lastLoc, setLastLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  const [publicInput, setPublicInput] = useState("");
+  const [publicData, setPublicData] = useState<PublicData | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerLocked, setScannerLocked] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const syncing = useRef(false);
+  const firstName = useMemo(() => user?.fullName?.split(" ")[0] || "Demo", [user?.fullName]);
+
+  const setInfo = (msg: string) => {
+    setStatus(msg);
+    setStatusTone("info");
+  };
+  const setOk = (msg: string) => {
+    setStatus(msg);
+    setStatusTone("success");
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setStatus("");
     try {
       await fn();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unexpected error");
+    } catch (e) {
+      setStatus(errMsg(e));
+      setStatusTone("error");
     } finally {
       setBusy(false);
     }
   };
 
-  const login = () =>
-    run(async () => {
-      const res = await api<{
-        accessToken: string;
-        user: { fullName: string };
-        message: string;
-      }>(baseUrl, "/auth/login", "POST", undefined, { email, password });
-      setToken(res.accessToken);
-      setUserName(res.user.fullName);
-      setStatus(res.message || "Logged in");
-    });
-
-  const logout = () => {
-    setToken("");
-    setUserName("");
-    setStatus("Logged out");
+  const updateQCount = async () => {
+    if (!db) return;
+    setQCount((await listQ(db)).length);
   };
 
-  const loadProfile = () =>
-    run(async () => {
-      const res = await api<any>(baseUrl, "/me/medical-profile", "GET", token);
-      if (!res) return setStatus("No profile found yet.");
-      setProfile({
-        bloodGroup: res.bloodGroup || "",
-        allergies: joinCsv(res.allergies),
-        chronicConditions: joinCsv(res.chronicConditions),
-        medications: joinCsv(res.medications),
-        pastSurgeries: joinCsv(res.pastSurgeries),
-        emergencyNotes: res.emergencyNotes || "",
-        dateOfBirth: res.dateOfBirth ? String(res.dateOfBirth).slice(0, 10) : "",
-        gender: res.gender || "",
-      });
-      setStatus("Medical profile loaded.");
+  const queue = async (kind: QueueKind, payload: unknown) => {
+    if (!db) throw new Error("Local DB is not ready.");
+    await addQ(db, kind, payload);
+    await updateQCount();
+  };
+
+  const toPublic = (snap: Snapshot): PublicData => ({
+    user: { fullName: snap.user.fullName },
+    medicalProfile: {
+      bloodGroup: snap.profile.bloodGroup || null,
+      allergies: snap.profile.allergies,
+      chronicConditions: snap.profile.chronicConditions,
+      medications: snap.profile.medications,
+      emergencyNotes: snap.profile.emergencyNotes || null,
+    },
+    medicalSummary: {
+      hospitalName: snap.summary.hospitalName || null,
+      doctorName: snap.summary.doctorName || null,
+      treatmentStatus: snap.summary.treatmentStatus || null,
+      currentMedications: snap.summary.currentMedications,
+    },
+    emergencyContacts: snap.contacts.map((c) => ({
+      name: c.name,
+      phoneNumber: c.phoneNumber,
+      relationship: c.relationship || null,
+      isPrimary: !!c.isPrimary,
+    })),
+  });
+
+  const hydrate = async (t: string, currentUser?: User, silent = false) => {
+    const [profileRes, summaryRes, contactsRes] = await Promise.all([
+      api<any>("/me/medical-profile", "GET", t),
+      api<any>("/me/medical-summary", "GET", t),
+      api<Contact[]>("/me/emergency-contacts", "GET", t),
+    ]);
+
+    const activeUser = currentUser || user;
+    setProfile(
+      profileRes
+        ? {
+            bloodGroup: profileRes.bloodGroup || "",
+            allergies: arr(profileRes.allergies),
+            chronicConditions: arr(profileRes.chronicConditions),
+            medications: arr(profileRes.medications),
+            emergencyNotes: profileRes.emergencyNotes || "",
+            dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
+            gender: profileRes.gender || activeUser?.gender || "",
+          }
+        : {
+            ...EMPTY_PROFILE,
+            dateOfBirth: asDate(activeUser?.dateOfBirth),
+            gender: activeUser?.gender || "",
+          },
+    );
+
+    setSummary(
+      summaryRes
+        ? {
+            hospitalName: summaryRes.hospitalName || "",
+            doctorName: summaryRes.doctorName || "",
+            treatmentDuration: summaryRes.treatmentDuration || "",
+            treatmentStatus: summaryRes.treatmentStatus || "",
+            currentMedications: arr(summaryRes.currentMedications),
+            notes: summaryRes.notes || "",
+          }
+        : EMPTY_SUMMARY,
+    );
+
+    setContacts(contactsRes || []);
+
+    const qrRes = await api<QrData>("/me/qr", "GET", t);
+    if (qrRes?.qrCodeDataUrl || qrRes?.emergencyUrl) {
+      setQr(qrRes);
+    } else {
+      try {
+        setQr(await api<QrData>("/me/qr/regenerate", "POST", t));
+      } catch {
+        const cached = db ? await getKV<QrData>(db, "qr_data") : null;
+        setQr(cached);
+      }
+    }
+
+    if (!silent) setOk("Cloud data loaded.");
+  };
+
+  const syncQ = async () => {
+    if (!db || !token || !isOnline || syncing.current) return;
+    syncing.current = true;
+    try {
+      const rows = await listQ(db);
+      if (!rows.length) {
+        setQCount(0);
+        return;
+      }
+
+      for (const row of rows) {
+        let payload: any = null;
+        try {
+          payload = JSON.parse(row.payload);
+        } catch {
+          await delQ(db, row.id);
+          continue;
+        }
+
+        try {
+          if (row.kind === "profile_upsert") await api("/me/medical-profile", "PUT", token, payload);
+          if (row.kind === "summary_upsert") await api("/me/medical-summary", "PUT", token, payload);
+          if (row.kind === "contact_upsert") {
+            const requestBody = toContactBody(payload);
+            if (payload.id && !String(payload.id).startsWith("local-")) {
+              await api(`/me/emergency-contacts/${payload.id}`, "PUT", token, requestBody);
+            } else {
+              await api("/me/emergency-contacts", "POST", token, requestBody);
+            }
+          }
+          if (row.kind === "contact_delete" && payload.id && !String(payload.id).startsWith("local-")) {
+            await api(`/me/emergency-contacts/${payload.id}`, "DELETE", token);
+          }
+          if (row.kind === "panic_alert") await api("/me/panic-alerts", "POST", token, payload);
+          await delQ(db, row.id);
+        } catch (e) {
+          if (netErr(e)) break;
+          await delQ(db, row.id);
+        }
+      }
+
+      await updateQCount();
+      await hydrate(token, user || undefined, true);
+      setOk("Offline changes synced.");
+    } finally {
+      syncing.current = false;
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const unsub = NetInfo.addEventListener((state) => {
+      setIsOnline(Boolean(state.isConnected && state.isInternetReachable !== false));
     });
 
-  const saveProfile = () =>
+    void (async () => {
+      const localDb = await SQLite.openDatabaseAsync("resqid.db");
+      await initDb(localDb);
+      if (!active) return;
+
+      setDb(localDb);
+      setQCount((await listQ(localDb)).length);
+
+      const cachedSnapshot = await getKV<Snapshot>(localDb, "snapshot");
+      const cachedToken = await getKV<string>(localDb, "auth_token");
+      const cachedUser = await getKV<User>(localDb, "auth_user");
+      if (!active) return;
+
+      setSnapshot(cachedSnapshot);
+      if (cachedToken && cachedUser) {
+        setToken(cachedToken);
+        setUser(cachedUser);
+      }
+      setReady(true);
+    })();
+
+    return () => {
+      active = false;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !token || !user) return;
+    void hydrate(token, user, true);
+  }, [ready, token, user?.id]);
+
+  useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => {
+      setStatus("");
+    }, STATUS_AUTO_HIDE_MS);
+
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  useEffect(() => {
+    void syncQ();
+  }, [db, token, isOnline]);
+
+  useEffect(() => {
+    if (!db) return;
+    if (!token || !user) {
+      void delKV(db, "auth_token");
+      void delKV(db, "auth_user");
+      return;
+    }
+    void setKV(db, "auth_token", token);
+    void setKV(db, "auth_user", user);
+  }, [db, token, user]);
+
+  useEffect(() => {
+    if (!db || !user) return;
+    const snap: Snapshot = {
+      user,
+      profile,
+      summary,
+      contacts,
+      qr,
+      savedAt: new Date().toISOString(),
+    };
+    void setKV(db, "snapshot", snap);
+    void setKV(db, "qr_data", qr);
+    setSnapshot(snap);
+  }, [db, user, profile, summary, contacts, qr]);
+
+  const loginUser = () =>
     run(async () => {
-      const payload: Record<string, unknown> = {
-        allergies: splitCsv(profile.allergies),
-        chronicConditions: splitCsv(profile.chronicConditions),
-        medications: splitCsv(profile.medications),
-        pastSurgeries: splitCsv(profile.pastSurgeries),
+      if (!isOnline) throw new Error("No internet. Use Offline Emergency View.");
+      const response = await api<{ accessToken: string; user: User; message: string }>(
+        "/auth/login",
+        "POST",
+        undefined,
+        login,
+      );
+      setToken(response.accessToken);
+      setUser(response.user);
+      setTab("home");
+      await hydrate(response.accessToken, response.user);
+      setOk(response.message || "Signed in.");
+    });
+
+  const registerUser = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to register.");
+      if (register.password !== register.confirmPassword) throw new Error("Passwords do not match.");
+
+      const payload = {
+        fullName: register.fullName.trim(),
+        email: register.email.trim(),
+        phoneNumber: register.phoneNumber.trim(),
+        dateOfBirth: register.dateOfBirth.trim(),
+        gender: register.gender.trim().toLowerCase(),
+        password: register.password,
       };
-      if (profile.bloodGroup.trim()) payload.bloodGroup = profile.bloodGroup.trim();
-      if (profile.emergencyNotes.trim()) payload.emergencyNotes = profile.emergencyNotes.trim();
-      if (profile.dateOfBirth.trim()) payload.dateOfBirth = profile.dateOfBirth.trim();
-      if (profile.gender.trim()) payload.gender = profile.gender.trim();
-      await api(baseUrl, "/me/medical-profile", "PUT", token, payload);
-      setStatus("Medical profile saved.");
+      const response = await api<{ accessToken: string; user: User; message: string }>(
+        "/auth/register",
+        "POST",
+        undefined,
+        payload,
+      );
+      setToken(response.accessToken);
+      setUser(response.user);
+      setTab("home");
+      await hydrate(response.accessToken, response.user);
+      setOk(response.message || "Account created.");
     });
 
-  const loadSummary = () =>
+  const forgotPass = () =>
     run(async () => {
-      const res = await api<any>(baseUrl, "/me/medical-summary", "GET", token);
-      if (!res) return setStatus("No summary found yet.");
-      setSummary({
-        hospitalName: res.hospitalName || "",
-        doctorName: res.doctorName || "",
-        treatmentDuration: res.treatmentDuration || "",
-        treatmentStatus: res.treatmentStatus || "",
-        currentMedications: joinCsv(res.currentMedications),
-        notes: res.notes || "",
+      if (!isOnline) throw new Error("Internet is required.");
+      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, {
+        email: forgotEmail.trim(),
       });
-      setStatus("Medical summary loaded.");
+      setOk(response.message || "Reset instructions sent.");
     });
 
-  const saveSummary = () =>
+  const resetPass = () =>
     run(async () => {
-      const payload: Record<string, unknown> = {
-        currentMedications: splitCsv(summary.currentMedications),
-      };
-      if (summary.hospitalName.trim()) payload.hospitalName = summary.hospitalName.trim();
-      if (summary.doctorName.trim()) payload.doctorName = summary.doctorName.trim();
-      if (summary.treatmentDuration.trim()) payload.treatmentDuration = summary.treatmentDuration.trim();
-      if (summary.treatmentStatus.trim()) payload.treatmentStatus = summary.treatmentStatus.trim();
-      if (summary.notes.trim()) payload.notes = summary.notes.trim();
-      await api(baseUrl, "/me/medical-summary", "PUT", token, payload);
-      setStatus("Medical summary saved.");
+      if (!isOnline) throw new Error("Internet is required.");
+      if (reset.newPassword !== reset.confirmPassword) throw new Error("Passwords do not match.");
+      const response = await api<{ message: string }>("/auth/reset-password", "POST", undefined, {
+        token: reset.token.trim(),
+        newPassword: reset.newPassword,
+      });
+      setOk(response.message || "Password reset.");
+      setAuthScreen("login");
     });
 
-  const refreshContacts = () =>
+  const saveProfileCore = async () => {
+    const payload = {
+      bloodGroup: profile.bloodGroup || undefined,
+      allergies: profile.allergies,
+      chronicConditions: profile.chronicConditions,
+      medications: profile.medications,
+      emergencyNotes: profile.emergencyNotes || undefined,
+      dateOfBirth: profile.dateOfBirth || undefined,
+      gender: profile.gender || undefined,
+    };
+    if (isOnline) {
+      try {
+        await api("/me/medical-profile", "PUT", token, payload);
+        return "Profile saved.";
+      } catch (e) {
+        if (!netErr(e)) throw e;
+      }
+    }
+    await queue("profile_upsert", payload);
+    return "Profile saved offline.";
+  };
+
+  const saveSummaryCore = async () => {
+    const payload = {
+      hospitalName: summary.hospitalName || undefined,
+      doctorName: summary.doctorName || undefined,
+      treatmentDuration: summary.treatmentDuration || undefined,
+      treatmentStatus: summary.treatmentStatus || undefined,
+      currentMedications: summary.currentMedications,
+      notes: summary.notes || undefined,
+    };
+    if (isOnline) {
+      try {
+        await api("/me/medical-summary", "PUT", token, payload);
+        return "Summary saved.";
+      } catch (e) {
+        if (!netErr(e)) throw e;
+      }
+    }
+    await queue("summary_upsert", payload);
+    return "Summary saved offline.";
+  };
+
+  const saveMedical = () =>
     run(async () => {
-      const res = await api<Contact[]>(baseUrl, "/me/emergency-contacts", "GET", token);
-      setContacts(res || []);
-      setStatus("Contacts loaded.");
+      const [profileMsg, summaryMsg] = await Promise.all([saveProfileCore(), saveSummaryCore()]);
+      setOk(`${profileMsg} ${summaryMsg}`);
     });
 
   const saveContact = () =>
@@ -222,119 +638,1169 @@ export default function App() {
       if (!contactForm.name.trim() || !contactForm.phoneNumber.trim()) {
         throw new Error("Name and phone number are required.");
       }
-      const payload: Record<string, unknown> = {
+      if (!contactForm.id && contacts.length >= 5) {
+        throw new Error("You can add up to 5 emergency contacts.");
+      }
+
+      const payload = {
+        id: contactForm.id || `local-${Date.now()}`,
         name: contactForm.name.trim(),
         phoneNumber: contactForm.phoneNumber.trim(),
+        relationship: contactForm.relationship.trim() || undefined,
         isPrimary: contactForm.isPrimary,
       };
-      if (contactForm.relationship.trim()) payload.relationship = contactForm.relationship.trim();
-      if (contactForm.id) {
-        await api(baseUrl, `/me/emergency-contacts/${contactForm.id}`, "PUT", token, payload);
-      } else {
-        await api(baseUrl, "/me/emergency-contacts", "POST", token, payload);
+      const requestBody = toContactBody(payload);
+
+      const applyLocal = () => setContacts((prev) => [...prev.filter((item) => item.id !== payload.id), payload]);
+
+      if (isOnline) {
+        try {
+          if (contactForm.id && !contactForm.id.startsWith("local-")) {
+            await api(`/me/emergency-contacts/${contactForm.id}`, "PUT", token, requestBody);
+          } else {
+            await api("/me/emergency-contacts", "POST", token, requestBody);
+          }
+          setContacts(await api<Contact[]>("/me/emergency-contacts", "GET", token));
+          setShowContactForm(false);
+          setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
+          setOk("Contact saved.");
+          return;
+        } catch (e) {
+          if (!netErr(e)) throw e;
+        }
       }
+
+      applyLocal();
+      await queue("contact_upsert", payload);
+      setShowContactForm(false);
       setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
-      await refreshContacts();
+      setOk("Contact saved offline.");
     });
 
-  const removeContact = (id: string) =>
-    run(async () => {
-      await api(baseUrl, `/me/emergency-contacts/${id}`, "DELETE", token);
-      await refreshContacts();
-    });
+  const deleteContact = (id: string) =>
+    Alert.alert("Delete Contact", "Delete this contact?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () =>
+          run(async () => {
+            setContacts((prev) => prev.filter((x) => x.id !== id));
+            if (isOnline && !id.startsWith("local-")) {
+              try {
+                await api(`/me/emergency-contacts/${id}`, "DELETE", token);
+                setOk("Contact deleted.");
+                return;
+              } catch (e) {
+                if (!netErr(e)) throw e;
+              }
+            }
+            if (!id.startsWith("local-")) await queue("contact_delete", { id });
+            setInfo("Delete queued for sync.");
+          }),
+      },
+    ]);
 
-  const loadQr = () =>
+  const getLocation = async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== "granted") throw new Error("Location permission is required.");
+
+    try {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+    } catch {
+      const last = await Location.getLastKnownPositionAsync();
+      if (!last) throw new Error("Unable to read GPS location.");
+      return { latitude: last.coords.latitude, longitude: last.coords.longitude };
+    }
+  };
+
+  const sendSos = () =>
     run(async () => {
-      const res = await api<any>(baseUrl, "/me/qr", "GET", token);
-      setQr(res);
-      setStatus(res?.message || "QR loaded.");
+      const loc = await getLocation();
+      setLastLoc(loc);
+
+      const payload = {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        message: panicMsg.trim() || undefined,
+      };
+      if (isOnline) {
+        try {
+          await api("/me/panic-alerts", "POST", token, payload);
+          setShowSos(false);
+          setPanicMsg("");
+          setOk("Emergency alert sent.");
+          return;
+        } catch (e) {
+          if (!netErr(e)) throw e;
+        }
+      }
+
+      await queue("panic_alert", payload);
+      setShowSos(false);
+      setPanicMsg("");
+      setInfo("SOS queued offline and will sync automatically.");
     });
 
   const regenQr = () =>
     run(async () => {
-      const res = await api<any>(baseUrl, "/me/qr/regenerate", "POST", token);
-      setQr(res);
-      setStatus("QR regenerated.");
+      if (!isOnline) throw new Error("Internet is required for QR regenerate.");
+      setQr(await api<QrData>("/me/qr/regenerate", "POST", token));
+      setOk("QR regenerated.");
     });
 
-  const sendPanic = () =>
+  const openScanner = () =>
     run(async () => {
-      const latitude = Number(panic.latitude);
-      const longitude = Number(panic.longitude);
-      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-        throw new Error("Latitude/Longitude must be numbers.");
-      }
-      const res = await api<any>(baseUrl, "/me/panic-alerts", "POST", token, {
-        latitude,
-        longitude,
-        ...(panic.message.trim() ? { message: panic.message.trim() } : {}),
-      });
-      setPanic((prev) => ({
-        ...prev,
-        result: `Status: ${res?.data?.status || "N/A"}${res?.warning ? ` | ${res.warning}` : ""}`,
-      }));
-      setStatus("Panic alert submitted.");
+      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
+      if (!permission.granted) throw new Error("Camera permission is required.");
+      setScannerLocked(false);
+      setShowScanner(true);
     });
 
-  if (!token) {
+  const resolvePublic = async (raw: string) => {
+    const emergencyToken = tokenFrom(raw);
+    if (!emergencyToken) throw new Error("Provide a valid token or URL.");
+
+    if (isOnline) {
+      setPublicData(await api<PublicData>(`/emergency-access/${emergencyToken}`));
+      return;
+    }
+
+    if (snapshot?.qr?.emergencyUrl && tokenFrom(snapshot.qr.emergencyUrl) === emergencyToken) {
+      setPublicData(toPublic(snapshot));
+      return;
+    }
+
+    throw new Error("Offline public access only works for cached local QR.");
+  };
+
+  const onScanned = (result: BarcodeScanningResult) => {
+    if (scannerLocked) return;
+    setScannerLocked(true);
+    setShowScanner(false);
+    const scanned = tokenFrom(result.data || "");
+    setPublicInput(scanned);
+    void run(async () => {
+      await resolvePublic(scanned);
+      setOk("QR scanned successfully.");
+    });
+  };
+
+  const addProfileItem = (key: "allergies" | "chronicConditions" | "medications", raw: string, clear: () => void) => {
+    const value = raw.trim();
+    if (!value) return;
+    setProfile((prev) => ({
+      ...prev,
+      [key]: [...prev[key], value],
+    }));
+    clear();
+  };
+
+  const removeProfileItem = (key: "allergies" | "chronicConditions" | "medications", value: string) => {
+    setProfile((prev) => ({
+      ...prev,
+      [key]: prev[key].filter((item) => item !== value),
+    }));
+  };
+
+  const addSummaryMedication = () => {
+    const value = smDraft.trim();
+    if (!value) return;
+    setSummary((prev) => ({ ...prev, currentMedications: [...prev.currentMedications, value] }));
+    setSmDraft("");
+  };
+
+  const removeSummaryMedication = (value: string) => {
+    setSummary((prev) => ({
+      ...prev,
+      currentMedications: prev.currentMedications.filter((item) => item !== value),
+    }));
+  };
+
+  const openContactEditor = (contact?: Contact) => {
+    if (!contact) {
+      setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
+    } else {
+      setContactForm({
+        id: contact.id,
+        name: contact.name,
+        phoneNumber: contact.phoneNumber,
+        relationship: contact.relationship || "",
+        isPrimary: !!contact.isPrimary,
+      });
+    }
+    setShowContactForm(true);
+  };
+
+  const logout = () => {
+    setToken("");
+    setUser(null);
+    setContacts([]);
+    setQr(null);
+    setProfile(EMPTY_PROFILE);
+    setSummary(EMPTY_SUMMARY);
+    setAuthScreen("login");
+    setTab("home");
+    setInfo("Logged out.");
+  };
+
+  const statusStyle = statusTone === "error" ? s.statusError : statusTone === "success" ? s.statusSuccess : s.statusInfo;
+
+  if (!ready) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={s.root}>
         <StatusBar style="dark" />
-        <ScrollView contentContainerStyle={styles.page}>
-          <Text style={styles.heading}>RESQID Mobile</Text>
-          <Text style={styles.apiText}>API: {baseUrl}</Text>
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" />
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" />
-          <Pressable style={styles.primaryBtn} onPress={login}><Text style={styles.primaryBtnText}>{busy ? "Please wait..." : "Login"}</Text></Pressable>
-          {!!status && <Text style={styles.status}>{status}</Text>}
+        <View style={s.bootWrap}>
+          <View style={s.logoSquare}>
+            <Ionicons name="shield-checkmark-outline" size={36} color="#fff" />
+          </View>
+          <Text style={s.bootTitle}>ResQID</Text>
+          <Text style={s.bootSub}>Preparing emergency data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!token || !user) {
+    return (
+      <SafeAreaView style={s.root}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
+          <View style={s.logoBlock}>
+            <View style={s.logoSquare}>
+              <Ionicons name="shield-checkmark-outline" size={36} color="#fff" />
+            </View>
+            <Text style={s.logoTitle}>ResQID</Text>
+            <Text style={s.logoSub}>Emergency Medical ID</Text>
+          </View>
+
+          {authScreen === "login" && (
+            <View style={s.formWrap}>
+              <Text style={s.formLabel}>Email</Text>
+              <Field
+                icon="mail-outline"
+                placeholder="Enter your email"
+                value={login.email}
+                onChangeText={(v) => setLogin((p) => ({ ...p, email: v }))}
+                keyboardType="email-address"
+              />
+              <Text style={s.formLabel}>Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Enter your password"
+                value={login.password}
+                onChangeText={(v) => setLogin((p) => ({ ...p, password: v }))}
+                secureTextEntry={!showLoginPassword}
+                right={
+                  <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
+                    <Ionicons
+                      name={showLoginPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Pressable style={s.primaryBtn} onPress={loginUser}>
+                <Text style={s.primaryBtnText}>{busy ? "Signing In..." : "Sign In"}</Text>
+              </Pressable>
+              <Text style={s.centerText}>
+                Don't have an account?{" "}
+                <Text style={s.link} onPress={() => setAuthScreen("register")}>Create Account</Text>
+              </Text>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("forgot")}>Forgot password?</Text>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("public")}>Scan a QR code without login</Text>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("offline")}>Offline Emergency View</Text>
+            </View>
+          )}
+
+          {authScreen === "register" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Create Account</Text>
+                  <Text style={s.authSub}>Set up your emergency profile</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Full Name</Text>
+              <Field
+                icon="person-outline"
+                placeholder="Enter your full name"
+                value={register.fullName}
+                onChangeText={(v) => setRegister((p) => ({ ...p, fullName: v }))}
+                autoCapitalize="words"
+              />
+              <Text style={s.formLabel}>Email</Text>
+              <Field
+                icon="mail-outline"
+                placeholder="Enter your email"
+                value={register.email}
+                onChangeText={(v) => setRegister((p) => ({ ...p, email: v }))}
+                keyboardType="email-address"
+              />
+              <Text style={s.formLabel}>Phone Number</Text>
+              <Field
+                icon="call-outline"
+                placeholder="+92 300 1234567"
+                value={register.phoneNumber}
+                onChangeText={(v) => setRegister((p) => ({ ...p, phoneNumber: v }))}
+                keyboardType="phone-pad"
+              />
+
+              <View style={s.rowGap}>
+                <View style={s.flexOne}>
+                  <Text style={s.formLabel}>Date of Birth</Text>
+                  <Field
+                    icon="calendar-outline"
+                    placeholder="YYYY-MM-DD"
+                    value={register.dateOfBirth}
+                    onChangeText={(v) => setRegister((p) => ({ ...p, dateOfBirth: v }))}
+                  />
+                </View>
+                <View style={s.flexOne}>
+                  <Text style={s.formLabel}>Gender</Text>
+                  <View style={s.genderRow}>
+                    {GENDERS.map((g) => (
+                      <Pressable
+                        key={g}
+                        style={[s.genderChip, register.gender === g && s.genderChipOn]}
+                        onPress={() => setRegister((p) => ({ ...p, gender: g }))}
+                      >
+                        <Text style={[s.genderChipText, register.gender === g && s.genderChipTextOn]}>{g}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Create a password"
+                value={register.password}
+                onChangeText={(v) => setRegister((p) => ({ ...p, password: v }))}
+                secureTextEntry={!showRegPassword}
+                right={
+                  <Pressable onPress={() => setShowRegPassword((v) => !v)}>
+                    <Ionicons
+                      name={showRegPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Text style={s.formLabel}>Confirm Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Confirm your password"
+                value={register.confirmPassword}
+                onChangeText={(v) => setRegister((p) => ({ ...p, confirmPassword: v }))}
+                secureTextEntry={!showRegConfirm}
+                right={
+                  <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
+                    <Ionicons
+                      name={showRegConfirm ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+
+              <Pressable style={s.primaryBtn} onPress={registerUser}>
+                <Text style={s.primaryBtnText}>{busy ? "Creating..." : "Create Account"}</Text>
+              </Pressable>
+              <Text style={s.centerText}>
+                Already have an account? <Text style={s.link} onPress={() => setAuthScreen("login")}>Sign In</Text>
+              </Text>
+            </View>
+          )}
+
+          {authScreen === "forgot" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <Text style={s.authTitle}>Forgot Password</Text>
+              </View>
+              <Text style={s.formLabel}>Email</Text>
+              <Field
+                icon="mail-outline"
+                placeholder="Account email"
+                value={forgotEmail}
+                onChangeText={setForgotEmail}
+                keyboardType="email-address"
+              />
+              <Pressable style={s.primaryBtn} onPress={forgotPass}>
+                <Text style={s.primaryBtnText}>{busy ? "Sending..." : "Send Reset Link"}</Text>
+              </Pressable>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("reset")}>Have token? Reset password</Text>
+            </View>
+          )}
+
+          {authScreen === "reset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <Text style={s.authTitle}>Reset Password</Text>
+              </View>
+              <Text style={s.formLabel}>Reset Token</Text>
+              <Field icon="key-outline" placeholder="Paste token" value={reset.token} onChangeText={(v) => setReset((p) => ({ ...p, token: v }))} />
+              <Text style={s.formLabel}>New Password</Text>
+              <Field icon="lock-closed-outline" placeholder="New password" value={reset.newPassword} onChangeText={(v) => setReset((p) => ({ ...p, newPassword: v }))} secureTextEntry />
+              <Text style={s.formLabel}>Confirm Password</Text>
+              <Field icon="lock-closed-outline" placeholder="Confirm password" value={reset.confirmPassword} onChangeText={(v) => setReset((p) => ({ ...p, confirmPassword: v }))} secureTextEntry />
+              <Pressable style={s.primaryBtn} onPress={resetPass}>
+                <Text style={s.primaryBtnText}>{busy ? "Saving..." : "Reset Password"}</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authScreen === "public" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <Text style={s.authTitle}>Emergency QR Access</Text>
+              </View>
+              {showScanner ? (
+                <View style={s.scannerWrap}>
+                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
+                </View>
+              ) : (
+                <>
+                  <Field
+                    icon="qr-code-outline"
+                    placeholder="Paste QR URL or token"
+                    value={publicInput}
+                    onChangeText={setPublicInput}
+                  />
+                  <Pressable
+                    style={s.primaryBtn}
+                    onPress={() =>
+                      run(async () => {
+                        await resolvePublic(publicInput);
+                        setOk("Emergency profile opened.");
+                      })
+                    }
+                  >
+                    <Text style={s.primaryBtnText}>{busy ? "Opening..." : "Open Emergency Profile"}</Text>
+                  </Pressable>
+                  <Pressable style={s.subtleBtn} onPress={openScanner}>
+                    <Text style={s.subtleBtnText}>Scan QR with Camera</Text>
+                  </Pressable>
+                  {publicData && (
+                    <View style={s.publicCard}>
+                      <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
+                      <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
+                      <Text style={s.publicLine}>Allergies: {publicData.medicalProfile?.allergies?.join(", ") || "None"}</Text>
+                      <Text style={s.publicLine}>Conditions: {publicData.medicalProfile?.chronicConditions?.join(", ") || "None"}</Text>
+                      <Text style={s.publicLine}>Contacts: {publicData.emergencyContacts?.length || 0}</Text>
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+
+          {authScreen === "offline" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <Text style={s.authTitle}>Offline Emergency View</Text>
+              </View>
+              <View style={s.publicCard}>
+                <Text style={s.publicName}>{snapshot?.user.fullName || "No cached profile yet"}</Text>
+                <Text style={s.publicLine}>Blood Group: {snapshot?.profile.bloodGroup || "Not set"}</Text>
+                <Text style={s.publicLine}>Allergies: {snapshot?.profile.allergies.join(", ") || "None"}</Text>
+                <Text style={s.publicLine}>Conditions: {snapshot?.profile.chronicConditions.join(", ") || "None"}</Text>
+                <Text style={s.publicLine}>Medications: {snapshot?.profile.medications.join(", ") || "None"}</Text>
+                <Text style={s.publicLine}>Emergency Contacts: {snapshot?.contacts.length || 0}</Text>
+                <Text style={s.snapshotStamp}>Cached at: {snapshot ? new Date(snapshot.savedAt).toLocaleString() : "-"}</Text>
+              </View>
+            </View>
+          )}
+
+          {!!status && <Text style={[s.statusBadge, statusStyle]}>{status}</Text>}
+          <Text style={s.apiHint}>API: {API}</Text>
         </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={s.root}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.page}>
-        <View style={styles.row}><Text style={styles.heading}>Hi, {userName}</Text><Pressable style={styles.secondaryBtn} onPress={logout}><Text>Logout</Text></Pressable></View>
-        <Text style={styles.apiText}>API: {baseUrl}</Text>
-        <View style={styles.tabs}>{(["profile", "summary", "contacts", "qrpanic"] as TabKey[]).map((k) => <Pressable key={k} style={[styles.tab, tab === k && styles.tabActive]} onPress={() => setTab(k)}><Text style={tab === k ? styles.tabTextActive : styles.tabText}>{k.toUpperCase()}</Text></Pressable>)}</View>
+      <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+        <Text style={s.onlineText}>{isOnline ? "Online" : "Offline"} | Pending sync: {qCount}</Text>
 
-        {tab === "profile" && <View style={styles.card}><View style={styles.row}><Pressable style={styles.secondaryBtn} onPress={loadProfile}><Text>Load</Text></Pressable><Pressable style={styles.primaryBtnSm} onPress={saveProfile}><Text style={styles.primaryBtnText}>Save</Text></Pressable></View><TextInput style={styles.input} value={profile.bloodGroup} onChangeText={(v) => setProfile((p) => ({ ...p, bloodGroup: v }))} placeholder="Blood Group" /><TextInput style={styles.input} value={profile.allergies} onChangeText={(v) => setProfile((p) => ({ ...p, allergies: v }))} placeholder="Allergies (csv)" /><TextInput style={styles.input} value={profile.chronicConditions} onChangeText={(v) => setProfile((p) => ({ ...p, chronicConditions: v }))} placeholder="Chronic conditions (csv)" /><TextInput style={styles.input} value={profile.medications} onChangeText={(v) => setProfile((p) => ({ ...p, medications: v }))} placeholder="Medications (csv)" /><TextInput style={styles.input} value={profile.pastSurgeries} onChangeText={(v) => setProfile((p) => ({ ...p, pastSurgeries: v }))} placeholder="Past surgeries (csv)" /><TextInput style={styles.input} value={profile.dateOfBirth} onChangeText={(v) => setProfile((p) => ({ ...p, dateOfBirth: v }))} placeholder="DOB YYYY-MM-DD" /><TextInput style={styles.input} value={profile.gender} onChangeText={(v) => setProfile((p) => ({ ...p, gender: v }))} placeholder="Gender" /><TextInput style={[styles.input, styles.multi]} value={profile.emergencyNotes} onChangeText={(v) => setProfile((p) => ({ ...p, emergencyNotes: v }))} placeholder="Emergency notes" multiline /></View>}
+        {tab === "home" && (
+          <>
+            <View style={s.homeTopRow}>
+              <View style={s.brandMini}>
+                <View style={s.brandMiniIcon}>
+                  <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
+                </View>
+                <Text style={s.brandMiniTitle}>ResQID</Text>
+              </View>
+              <Pressable onPress={logout}>
+                <Ionicons name="settings-outline" size={24} color="#6b7280" />
+              </Pressable>
+            </View>
 
-        {tab === "summary" && <View style={styles.card}><View style={styles.row}><Pressable style={styles.secondaryBtn} onPress={loadSummary}><Text>Load</Text></Pressable><Pressable style={styles.primaryBtnSm} onPress={saveSummary}><Text style={styles.primaryBtnText}>Save</Text></Pressable></View><TextInput style={styles.input} value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} placeholder="Hospital" /><TextInput style={styles.input} value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} placeholder="Doctor" /><TextInput style={styles.input} value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} placeholder="Treatment duration" /><TextInput style={styles.input} value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} placeholder="Treatment status" /><TextInput style={styles.input} value={summary.currentMedications} onChangeText={(v) => setSummary((p) => ({ ...p, currentMedications: v }))} placeholder="Current medications (csv)" /><TextInput style={[styles.input, styles.multi]} value={summary.notes} onChangeText={(v) => setSummary((p) => ({ ...p, notes: v }))} placeholder="Notes" multiline /></View>}
+            <Text style={s.homeHello}>Hello, {firstName}</Text>
+            <Text style={s.homeSub}>Your emergency profile is ready</Text>
 
-        {tab === "contacts" && <View style={styles.card}><View style={styles.row}><Pressable style={styles.secondaryBtn} onPress={refreshContacts}><Text>Refresh</Text></Pressable><Pressable style={styles.secondaryBtn} onPress={() => setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false })}><Text>New</Text></Pressable></View>{contacts.map((c) => <View key={c.id} style={styles.contact}><Text>{c.name} - {c.phoneNumber}</Text><Text>{c.relationship || "N/A"} | {c.isPrimary ? "Primary" : "Secondary"}</Text><View style={styles.row}><Pressable style={styles.secondaryBtn} onPress={() => setContactForm({ id: c.id, name: c.name, phoneNumber: c.phoneNumber, relationship: c.relationship || "", isPrimary: !!c.isPrimary })}><Text>Edit</Text></Pressable><Pressable style={styles.dangerBtn} onPress={() => removeContact(c.id)}><Text style={styles.primaryBtnText}>Delete</Text></Pressable></View></View>)}<TextInput style={styles.input} value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} placeholder="Contact name" /><TextInput style={styles.input} value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} placeholder="Phone number" /><TextInput style={styles.input} value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} placeholder="Relationship" /><View style={styles.row}><Text>Primary Contact</Text><Switch value={contactForm.isPrimary} onValueChange={(v) => setContactForm((p) => ({ ...p, isPrimary: v }))} /></View><Pressable style={styles.primaryBtnSm} onPress={saveContact}><Text style={styles.primaryBtnText}>{contactForm.id ? "Update Contact" : "Save Contact"}</Text></Pressable></View>}
+            <View style={s.statGrid}>
+              <View style={s.statCard}>
+                <View style={s.statIconBubble}><MaterialCommunityIcons name="water-outline" size={18} color="#ef4444" /></View>
+                <Text style={s.statValue}>{profile.bloodGroup || "Not set"}</Text>
+                <Text style={s.statLabel}>Blood Group</Text>
+              </View>
+              <View style={s.statCard}>
+                <View style={s.statIconBubble}><Ionicons name="warning-outline" size={18} color="#d97706" /></View>
+                <Text style={s.statValue}>{profile.allergies.length}</Text>
+                <Text style={s.statLabel}>Allergies</Text>
+              </View>
+              <View style={s.statCard}>
+                <View style={s.statIconBubble}><Ionicons name="medkit-outline" size={18} color="#2563eb" /></View>
+                <Text style={s.statValue}>{profile.medications.length}</Text>
+                <Text style={s.statLabel}>Medications</Text>
+              </View>
+              <View style={s.statCard}>
+                <View style={s.statIconBubble}><Ionicons name="heart-outline" size={18} color="#16a34a" /></View>
+                <Text style={s.statValue}>{profile.chronicConditions.length}</Text>
+                <Text style={s.statLabel}>Conditions</Text>
+              </View>
+            </View>
 
-        {tab === "qrpanic" && <View style={styles.card}><View style={styles.row}><Pressable style={styles.secondaryBtn} onPress={loadQr}><Text>Load QR</Text></Pressable><Pressable style={styles.primaryBtnSm} onPress={regenQr}><Text style={styles.primaryBtnText}>Regenerate</Text></Pressable></View>{qr?.qrCodeDataUrl ? <Image source={{ uri: qr.qrCodeDataUrl }} style={styles.qr} /> : null}{qr?.token ? <Text>Token: {qr.token}</Text> : null}{qr?.emergencyUrl ? <Text>URL: {qr.emergencyUrl}</Text> : null}<TextInput style={styles.input} value={panic.latitude} onChangeText={(v) => setPanic((p) => ({ ...p, latitude: v }))} placeholder="Latitude" keyboardType="numeric" /><TextInput style={styles.input} value={panic.longitude} onChangeText={(v) => setPanic((p) => ({ ...p, longitude: v }))} placeholder="Longitude" keyboardType="numeric" /><TextInput style={[styles.input, styles.multi]} value={panic.message} onChangeText={(v) => setPanic((p) => ({ ...p, message: v }))} placeholder="Optional message" multiline /><Pressable style={styles.dangerBtnWide} onPress={sendPanic}><Text style={styles.primaryBtnText}>Send Panic Alert</Text></Pressable>{panic.result ? <Text>{panic.result}</Text> : null}</View>}
+            <Text style={s.sectionTitle}>Quick Actions</Text>
+            <Pressable style={[s.quickCard, s.quickCardPink]} onPress={() => setTab("qr")}>
+              <View style={[s.sectionIcon, s.quickIconRed]}>
+                <Ionicons name="qr-code" size={20} color="#fff" />
+              </View>
+              <View style={s.quickTextWrap}>
+                <Text style={s.quickTitle}>Your Medical ID</Text>
+                <Text style={s.quickSub}>View or share your QR code</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color="#6b7280" />
+            </Pressable>
 
-        {!!status && <Text style={styles.status}>{status}</Text>}
+            <Pressable
+              style={[s.quickCard, s.quickCardBlue]}
+              onPress={() =>
+                Alert.alert(
+                  "Emergency View",
+                  `Name: ${user.fullName}\nBlood Group: ${profile.bloodGroup || "Not set"}\nContacts: ${contacts.length}`,
+                )
+              }
+            >
+              <View style={[s.sectionIcon, s.quickIconBlue]}>
+                <Ionicons name="shield-outline" size={20} color="#fff" />
+              </View>
+              <View style={s.quickTextWrap}>
+                <Text style={s.quickTitle}>Emergency View</Text>
+                <Text style={s.quickSub}>Preview lock-screen mode</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color="#6b7280" />
+            </Pressable>
+
+            <View style={s.contactsHeader}>
+              <Text style={s.sectionTitle}>Emergency Contacts</Text>
+              <Text style={s.viewAll} onPress={() => setTab("contacts")}>View All</Text>
+            </View>
+
+            <Pressable style={s.contactsPreview} onPress={() => setTab("contacts")}>
+              {contacts.length === 0 ? (
+                <Text style={s.previewEmpty}>
+                  No emergency contacts added yet. <Text style={s.link}>Add now</Text>
+                </Text>
+              ) : (
+                contacts.slice(0, 2).map((c) => (
+                  <Text key={c.id} style={s.previewLine}>{c.name} - {c.phoneNumber}</Text>
+                ))
+              )}
+            </Pressable>
+          </>
+        )}
+
+        {tab === "profile" && (
+          <>
+            <View style={s.screenHead}>
+              <Text style={s.screenTitle}>Medical Profile</Text>
+              <Pressable onPress={saveMedical}><Text style={s.saveAction}>Save</Text></Pressable>
+            </View>
+
+            <View style={s.sectionCard}>
+              <View style={s.sectionHead}>
+                <View style={[s.sectionIcon, { backgroundColor: "#ef4444" }]}>
+                  <MaterialCommunityIcons name="water-outline" size={20} color="#fff" />
+                </View>
+                <View>
+                  <Text style={s.sectionCardTitle}>Blood Group</Text>
+                  <Text style={s.sectionHint}>Critical for transfusions</Text>
+                </View>
+              </View>
+              <View style={s.choiceWrap}>
+                {BLOOD.map((group) => (
+                  <Pressable
+                    key={group}
+                    style={[s.bloodChip, profile.bloodGroup === group && s.bloodChipOn]}
+                    onPress={() => setProfile((prev) => ({ ...prev, bloodGroup: group }))}
+                  >
+                    <Text style={[s.bloodChipText, profile.bloodGroup === group && s.bloodChipTextOn]}>{group}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={s.sectionCard}>
+              <View style={s.sectionHead}>
+                <View style={[s.sectionIcon, { backgroundColor: "#f59e0b" }]}>
+                  <Ionicons name="warning-outline" size={20} color="#fff" />
+                </View>
+                <View>
+                  <Text style={s.sectionCardTitle}>Allergies</Text>
+                  <Text style={s.sectionHint}>Food, drug, or other allergies</Text>
+                </View>
+              </View>
+              <View style={s.inlineRow}>
+                <TextInput style={s.inlineInput} placeholder="Add an allergy..." value={aDraft} onChangeText={setADraft} />
+                <Pressable style={[s.inlineBtn, s.inlineBtnYellow]} onPress={() => addProfileItem("allergies", aDraft, () => setADraft(""))}>
+                  <Text style={s.inlineBtnText}>Add</Text>
+                </Pressable>
+              </View>
+              <View style={s.listWrap}>
+                {profile.allergies.length === 0 ? (
+                  <Text style={s.sectionHint}>No allergies added</Text>
+                ) : (
+                  profile.allergies.map((item, idx) => (
+                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("allergies", item)}>
+                      <Text style={s.itemPillText}>{item} x</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+
+            <View style={s.sectionCard}>
+              <View style={s.sectionHead}>
+                <View style={[s.sectionIcon, { backgroundColor: "#3b82f6" }]}>
+                  <Ionicons name="heart-outline" size={20} color="#fff" />
+                </View>
+                <View>
+                  <Text style={s.sectionCardTitle}>Medical Conditions</Text>
+                  <Text style={s.sectionHint}>Chronic illnesses or conditions</Text>
+                </View>
+              </View>
+              <View style={s.inlineRow}>
+                <TextInput style={s.inlineInput} placeholder="Add a condition..." value={cDraft} onChangeText={setCDraft} />
+                <Pressable style={[s.inlineBtn, s.inlineBtnBlue]} onPress={() => addProfileItem("chronicConditions", cDraft, () => setCDraft(""))}>
+                  <Text style={s.inlineBtnText}>Add</Text>
+                </Pressable>
+              </View>
+              <View style={s.listWrap}>
+                {profile.chronicConditions.length === 0 ? (
+                  <Text style={s.sectionHint}>No conditions added</Text>
+                ) : (
+                  profile.chronicConditions.map((item, idx) => (
+                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("chronicConditions", item)}>
+                      <Text style={s.itemPillText}>{item} x</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+
+            <View style={s.sectionCard}>
+              <View style={s.sectionHead}>
+                <View style={[s.sectionIcon, { backgroundColor: "#22c55e" }]}>
+                  <Ionicons name="medkit-outline" size={20} color="#fff" />
+                </View>
+                <View>
+                  <Text style={s.sectionCardTitle}>Current Medications</Text>
+                  <Text style={s.sectionHint}>Medicines you take regularly</Text>
+                </View>
+              </View>
+              <View style={s.inlineRow}>
+                <TextInput style={s.inlineInput} placeholder="Add a medication..." value={mDraft} onChangeText={setMDraft} />
+                <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={() => addProfileItem("medications", mDraft, () => setMDraft(""))}>
+                  <Text style={s.inlineBtnText}>Add</Text>
+                </Pressable>
+              </View>
+              <View style={s.listWrap}>
+                {profile.medications.length === 0 ? (
+                  <Text style={s.sectionHint}>No medications added</Text>
+                ) : (
+                  profile.medications.map((item, idx) => (
+                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("medications", item)}>
+                      <Text style={s.itemPillText}>{item} x</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+
+            <View style={s.sectionCard}>
+              <Text style={s.sectionCardTitle}>Additional Details</Text>
+              <View style={s.summaryRow}>
+                <View style={s.flexOne}>
+                  <Text style={s.formLabel}>Date of Birth</Text>
+                  <TextInput style={s.inlineInput} placeholder="YYYY-MM-DD" value={profile.dateOfBirth} onChangeText={(v) => setProfile((p) => ({ ...p, dateOfBirth: v }))} />
+                </View>
+                <View style={s.flexOne}>
+                  <Text style={s.formLabel}>Gender</Text>
+                  <View style={s.genderRow}>
+                    {GENDERS.map((g) => (
+                      <Pressable key={g} style={[s.genderChip, profile.gender === g && s.genderChipOn]} onPress={() => setProfile((p) => ({ ...p, gender: g }))}>
+                        <Text style={[s.genderChipText, profile.gender === g && s.genderChipTextOn]}>{g}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+              <Text style={s.formLabel}>Emergency Notes</Text>
+              <TextInput style={s.textArea} multiline value={profile.emergencyNotes} onChangeText={(v) => setProfile((p) => ({ ...p, emergencyNotes: v }))} placeholder="Add emergency notes" />
+            </View>
+
+            <View style={[s.sectionCard, s.sectionCardSoft]}>
+              <Text style={s.sectionCardTitle}>Treatment Summary</Text>
+              <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
+              <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
+              <View style={s.summaryRow}>
+                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
+                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
+              </View>
+              <View style={s.inlineRow}>
+                <TextInput style={s.inlineInput} placeholder="Current medication" value={smDraft} onChangeText={setSmDraft} />
+                <Pressable style={[s.inlineBtn, s.inlineBtnBlue]} onPress={addSummaryMedication}><Text style={s.inlineBtnText}>Add</Text></Pressable>
+              </View>
+              <View style={s.listWrap}>
+                {summary.currentMedications.length === 0 ? (
+                  <Text style={s.sectionHint}>No summary medications</Text>
+                ) : (
+                  summary.currentMedications.map((item, idx) => (
+                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeSummaryMedication(item)}>
+                      <Text style={s.itemPillText}>{item} x</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+              <TextInput style={s.textArea} multiline placeholder="Notes" value={summary.notes} onChangeText={(v) => setSummary((p) => ({ ...p, notes: v }))} />
+            </View>
+          </>
+        )}
+
+        {tab === "qr" && (
+          <>
+            <View style={s.qrTop}><Text style={s.screenTitle}>Your Medical ID</Text></View>
+            <View style={s.qrAvatar}><Text style={s.qrAvatarText}>{firstName.slice(0, 1).toUpperCase()}</Text></View>
+            <Text style={s.qrName}>{user.fullName}</Text>
+            <Text style={s.qrSub}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
+
+            <View style={s.qrCard}>
+              {qr?.qrCodeDataUrl ? (
+                <Image source={{ uri: qr.qrCodeDataUrl }} style={s.qrImage} />
+              ) : (
+                <Text style={s.qrPlaceholder}>No QR generated yet</Text>
+              )}
+            </View>
+            <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
+
+            <View style={s.qrActionRow}>
+              <Pressable style={s.ghostBtn} onPress={() => setInfo(qr?.emergencyUrl || "No emergency URL available yet.") }>
+                <Ionicons name="download-outline" size={18} color="#111827" />
+                <Text style={s.ghostBtnText}>Download</Text>
+              </Pressable>
+              <Pressable style={s.subtleBtn} onPress={regenQr}><Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text></Pressable>
+            </View>
+          </>
+        )}
+
+        {tab === "contacts" && (
+          <>
+            <View style={s.screenHead}><Text style={s.screenTitle}>Emergency Contacts</Text></View>
+            <View style={s.contactsTip}><Text style={s.contactsTipText}>Tip: Add up to 5 emergency contacts. These will be notified when you trigger a panic alert.</Text></View>
+
+            {contacts.length === 0 ? (
+              <View style={s.emptyContactCard}>
+                <View style={s.emptyIconWrap}><Ionicons name="call-outline" size={42} color="#6b7280" /></View>
+                <Text style={s.emptyTitle}>No Contacts Yet</Text>
+                <Text style={s.emptySub}>Add emergency contacts who should be notified in case of an emergency.</Text>
+              </View>
+            ) : (
+              contacts.map((contact) => (
+                <View key={contact.id} style={s.contactCard}>
+                  <Text style={s.contactName}>{contact.name}</Text>
+                  <Text style={s.contactPhone}>{contact.phoneNumber}</Text>
+                  <Text style={s.contactMeta}>{contact.relationship || "Relationship not set"}{contact.isPrimary ? "  |  Primary" : ""}</Text>
+                  <View style={s.contactActions}>
+                    <Text style={s.contactAction} onPress={() => openContactEditor(contact)}>Edit</Text>
+                    <Text style={s.contactAction} onPress={() => deleteContact(contact.id)}>Delete</Text>
+                  </View>
+                </View>
+              ))
+            )}
+
+            {showContactForm && (
+              <View style={s.contactFormCard}>
+                <Text style={s.sectionCardTitle}>{contactForm.id ? "Edit Contact" : "Add Contact"}</Text>
+                <TextInput style={s.inlineInput} placeholder="Name" value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} />
+                <TextInput style={s.inlineInput} placeholder="Phone Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} />
+                <TextInput style={s.inlineInput} placeholder="Relationship" value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} />
+                <Pressable style={[s.primaryToggle, contactForm.isPrimary && s.primaryToggleOn]} onPress={() => setContactForm((p) => ({ ...p, isPrimary: !p.isPrimary }))}>
+                  <Text style={s.primaryToggleText}>{contactForm.isPrimary ? "Primary selected" : "Set as primary"}</Text>
+                </Pressable>
+                <Pressable style={s.primaryBtn} onPress={saveContact}><Text style={s.primaryBtnText}>{busy ? "Saving..." : "Save Contact"}</Text></Pressable>
+              </View>
+            )}
+
+            <Pressable style={s.primaryBtn} onPress={() => openContactEditor()}>
+              <Text style={s.primaryBtnText}>+ Add Emergency Contact</Text>
+            </Pressable>
+          </>
+        )}
+
+        {!!status && <Text style={[s.statusBadge, statusStyle]}>{status}</Text>}
       </ScrollView>
+
+      <View style={s.bottomBar}>
+        <Pressable style={s.navItem} onPress={() => setTab("home")}>
+          <Ionicons name="home-outline" size={22} color={tab === "home" ? "#b91c1c" : "#6b7280"} />
+          <Text style={[s.navLabel, tab === "home" && s.navLabelOn]}>Home</Text>
+        </Pressable>
+        <Pressable style={s.navItem} onPress={() => setTab("profile")}>
+          <Ionicons name="person-outline" size={22} color={tab === "profile" ? "#b91c1c" : "#6b7280"} />
+          <Text style={[s.navLabel, tab === "profile" && s.navLabelOn]}>Profile</Text>
+        </Pressable>
+        <View style={s.navSpacer} />
+        <Pressable style={s.navItem} onPress={() => setTab("qr")}>
+          <Ionicons name="qr-code-outline" size={22} color={tab === "qr" ? "#b91c1c" : "#6b7280"} />
+          <Text style={[s.navLabel, tab === "qr" && s.navLabelOn]}>QR Code</Text>
+        </Pressable>
+        <Pressable style={s.navItem} onPress={() => setTab("contacts")}>
+          <Ionicons name="call-outline" size={22} color={tab === "contacts" ? "#b91c1c" : "#6b7280"} />
+          <Text style={[s.navLabel, tab === "contacts" && s.navLabelOn]}>Contacts</Text>
+        </Pressable>
+      </View>
+
+      <Pressable style={s.sosButton} onPress={() => setShowSos(true)}>
+        <Text style={s.sosText}>SOS</Text>
+      </Pressable>
+
+      {showSos && (
+        <View style={s.sosOverlay}>
+          <Pressable style={s.closeX} onPress={() => setShowSos(false)}>
+            <Ionicons name="close" size={36} color="#fecaca" />
+          </Pressable>
+          <View style={s.sosIconWrap}>
+            <Ionicons name="warning-outline" size={82} color="#fff" />
+          </View>
+          <Text style={s.sosTitle}>Emergency Alert</Text>
+          <Text style={s.sosLocation}>
+            Location: {lastLoc ? `${lastLoc.latitude.toFixed(4)}, ${lastLoc.longitude.toFixed(4)}` : "Will capture on send"}
+          </Text>
+          <View style={s.sosPanel}>
+            <Text style={s.sosPanelLine}>Will alert {labelCount(contacts.length, "emergency contact")}:</Text>
+            <Text style={s.sosPanelSub}>{contacts.length ? contacts.map((c) => c.name).join(", ") : "No emergency contacts set up"}</Text>
+          </View>
+          <TextInput style={s.sosMessageInput} multiline value={panicMsg} onChangeText={setPanicMsg} placeholder="Optional message" placeholderTextColor="#fecaca" />
+          <View style={s.sosActionRow}>
+            <Pressable style={s.sosCancel} onPress={() => setShowSos(false)}><Text style={s.sosCancelText}>Cancel</Text></Pressable>
+            <Pressable style={s.sosSend} onPress={sendSos}><Text style={s.sosSendText}>{busy ? "Sending..." : "Send Alert"}</Text></Pressable>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f5f6fa" },
-  page: { padding: 16, gap: 10 },
-  heading: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  input: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "#fff" },
-  multi: { minHeight: 80, textAlignVertical: "top" },
-  row: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center" },
-  tabs: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  tab: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "#fff" },
-  tabActive: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
-  tabText: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  tabTextActive: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  card: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, backgroundColor: "#fff", padding: 10, gap: 8 },
-  primaryBtn: { borderRadius: 8, backgroundColor: "#16a34a", alignItems: "center", paddingVertical: 12 },
-  primaryBtnSm: { borderRadius: 8, backgroundColor: "#16a34a", alignItems: "center", justifyContent: "center", paddingHorizontal: 14, paddingVertical: 10 },
-  primaryBtnText: { color: "#fff", fontWeight: "700" },
-  secondaryBtn: { borderWidth: 1, borderColor: "#94a3b8", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: "#fff" },
-  dangerBtn: { borderRadius: 8, backgroundColor: "#dc2626", paddingHorizontal: 12, paddingVertical: 10 },
-  dangerBtnWide: { borderRadius: 8, backgroundColor: "#dc2626", alignItems: "center", paddingVertical: 12 },
-  contact: { borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8, padding: 10, gap: 6 },
-  qr: { width: 220, height: 220, alignSelf: "center", borderRadius: 8 },
-  status: { color: "#0f766e", fontWeight: "600" },
-  apiText: { color: "#475569", fontSize: 12, marginBottom: 6 },
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#f7f7f8" },
+  bootWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  bootTitle: { fontSize: 32, fontWeight: "800", color: "#111827" },
+  bootSub: { color: "#6b7280" },
+
+  logoSquare: {
+    width: 82,
+    height: 82,
+    borderRadius: 24,
+    backgroundColor: "#e3262f",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+
+  authWrap: { padding: 22, gap: 14, paddingBottom: 60 },
+  logoBlock: { alignItems: "center", marginBottom: 8, gap: 10 },
+  logoTitle: { fontSize: 52, fontWeight: "800", color: "#111827" },
+  logoSub: { fontSize: 16, color: "#6b7280" },
+
+  formWrap: { gap: 8, marginTop: 8 },
+  formLabel: { color: "#111827", fontSize: 14, fontWeight: "600", marginTop: 6 },
+  fieldWrap: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+  },
+  fieldWrapMulti: { minHeight: 90, alignItems: "flex-start", paddingVertical: 12 },
+  fieldInput: { flex: 1, fontSize: 17, color: "#111827" },
+  fieldInputMulti: { minHeight: 58, textAlignVertical: "top" },
+
+  authTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  authTitle: { fontSize: 34, fontWeight: "800", color: "#111827" },
+  authSub: { color: "#6b7280", fontSize: 16 },
+  rowGap: { flexDirection: "row", gap: 8 },
+  flexOne: { flex: 1 },
+
+  genderRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 1 },
+  genderChip: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    backgroundColor: "#fff",
+  },
+  genderChipOn: { backgroundColor: "#fee2e2", borderColor: "#fca5a5" },
+  genderChipText: { color: "#374151", fontSize: 12, textTransform: "capitalize" },
+  genderChipTextOn: { color: "#b91c1c", fontWeight: "700" },
+
+  primaryBtn: {
+    backgroundColor: "#e3262f",
+    minHeight: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  primaryBtnText: { color: "#fff", fontSize: 30 / 2, fontWeight: "800" },
+  subtleBtn: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  subtleBtnText: { color: "#374151", fontWeight: "700" },
+  centerText: { textAlign: "center", color: "#6b7280", marginTop: 10, fontSize: 18 },
+  link: { color: "#b91c1c", fontWeight: "700" },
+  linkSoft: { textAlign: "center", color: "#374151", textDecorationLine: "underline", marginTop: 8 },
+
+  scannerWrap: { borderRadius: 16, overflow: "hidden" },
+  scanner: { width: "100%", height: 380 },
+
+  publicCard: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    padding: 14,
+    marginTop: 10,
+    gap: 5,
+  },
+  publicName: { fontSize: 22, fontWeight: "800", color: "#111827" },
+  publicLine: { color: "#374151" },
+  snapshotStamp: { color: "#6b7280", fontSize: 12, marginTop: 8 },
+
+  statusBadge: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    fontWeight: "700",
+  },
+  statusSuccess: { backgroundColor: "#dcfce7", color: "#166534" },
+  statusError: { backgroundColor: "#fee2e2", color: "#991b1b" },
+  statusInfo: { backgroundColor: "#e0f2fe", color: "#0c4a6e" },
+  apiHint: { color: "#9ca3af", textAlign: "center", fontSize: 12, marginTop: 8 },
+
+  page: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 140, gap: 10 },
+  onlineText: { color: "#0f766e", fontWeight: "700", textAlign: "center" },
+
+  homeTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  brandMini: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandMiniIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#e3262f", alignItems: "center", justifyContent: "center" },
+  brandMiniTitle: { fontSize: 34 / 2, fontWeight: "800", color: "#111827" },
+  homeHello: { fontSize: 48 / 2, fontWeight: "800", color: "#111827", marginTop: 6 },
+  homeSub: { color: "#6b7280", fontSize: 17 },
+
+  statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 6 },
+  statCard: { width: "48.3%", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 18, backgroundColor: "#fff", padding: 14 },
+  statIconBubble: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center", marginBottom: 7 },
+  statValue: { fontSize: 31 / 2, fontWeight: "800", color: "#111827" },
+  statLabel: { color: "#6b7280" },
+
+  sectionTitle: { fontSize: 40 / 2, fontWeight: "800", color: "#111827", marginTop: 12 },
+  quickCard: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  quickCardPink: { backgroundColor: "#fff7f7", borderColor: "#f3d7d9" },
+  quickCardBlue: { backgroundColor: "#f0f7ff", borderColor: "#cde3fb" },
+  quickIconRed: { backgroundColor: "#e3262f" },
+  quickIconBlue: { backgroundColor: "#3b82f6" },
+  quickTextWrap: { flex: 1 },
+  quickTitle: { fontSize: 34 / 2, fontWeight: "800", color: "#111827" },
+  quickSub: { color: "#6b7280" },
+
+  contactsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  viewAll: { color: "#b91c1c", fontWeight: "700", marginTop: 10 },
+  contactsPreview: { borderRadius: 18, borderWidth: 1, borderColor: "#dbeafe", backgroundColor: "#eff6ff", padding: 16, minHeight: 95 },
+  previewEmpty: { color: "#6b7280", fontSize: 18 / 1.2 },
+  previewLine: { color: "#1f2937", marginBottom: 4 },
+
+  screenHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  screenTitle: { fontSize: 45 / 2, fontWeight: "800", color: "#111827" },
+  saveAction: { color: "#b91c1c", fontWeight: "800", fontSize: 18 },
+
+  sectionCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 18, backgroundColor: "#fff", padding: 14, gap: 8, marginTop: 6 },
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sectionIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  sectionCardTitle: { fontSize: 34 / 2, fontWeight: "800", color: "#111827" },
+  sectionHint: { color: "#6b7280", fontSize: 13 },
+
+  choiceWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  bloodChip: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: "#fff" },
+  bloodChipOn: { borderColor: "#fca5a5", backgroundColor: "#fee2e2" },
+  bloodChipText: { color: "#374151", fontWeight: "700" },
+  bloodChipTextOn: { color: "#b91c1c" },
+
+  inlineRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  inlineInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    minHeight: 44,
+    paddingHorizontal: 12,
+    color: "#111827",
+  },
+  inlineBtn: { borderRadius: 12, minHeight: 44, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
+  inlineBtnYellow: { backgroundColor: "#f59e0b" },
+  inlineBtnBlue: { backgroundColor: "#3b82f6" },
+  inlineBtnGreen: { backgroundColor: "#22c55e" },
+  inlineBtnText: { color: "#fff", fontWeight: "700" },
+
+  listWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  itemPill: { backgroundColor: "#f3f4f6", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  itemPillText: { color: "#334155", fontSize: 12 },
+  textArea: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    minHeight: 88,
+    textAlignVertical: "top",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#111827",
+  },
+  sectionCardSoft: { backgroundColor: "#fafafa" },
+  summaryRow: { flexDirection: "row", gap: 8 },
+
+  qrTop: { alignItems: "center" },
+  qrAvatar: { width: 116, height: 116, borderRadius: 58, backgroundColor: "#ffe4e6", alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 18 },
+  qrAvatarText: { color: "#be123c", fontSize: 46 / 2, fontWeight: "800" },
+  qrName: { fontSize: 58 / 2, fontWeight: "800", textAlign: "center", marginTop: 10, color: "#111827" },
+  qrSub: { textAlign: "center", color: "#6b7280", fontSize: 18, marginBottom: 6 },
+  qrCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 20, backgroundColor: "#fff", padding: 16, alignItems: "center", justifyContent: "center", minHeight: 320 },
+  qrImage: { width: 290, height: 290 },
+  qrPlaceholder: { color: "#6b7280" },
+  qrHint: { textAlign: "center", color: "#6b7280", fontSize: 30 / 2, marginTop: 10 },
+  qrActionRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  ghostBtn: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, minHeight: 44, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, backgroundColor: "#fff" },
+  ghostBtnText: { color: "#111827", fontWeight: "700" },
+
+  contactsTip: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 20, padding: 16, backgroundColor: "#f1f5f9", marginTop: 6 },
+  contactsTipText: { color: "#334155", fontSize: 18 / 1.2 },
+  emptyContactCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 22, backgroundColor: "#fff", minHeight: 280, padding: 22, alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 },
+  emptyIconWrap: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center" },
+  emptyTitle: { fontSize: 38 / 2, fontWeight: "800", color: "#111827" },
+  emptySub: { textAlign: "center", color: "#6b7280", fontSize: 16 },
+
+  contactCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 16, backgroundColor: "#fff", padding: 14, gap: 2 },
+  contactName: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  contactPhone: { color: "#334155" },
+  contactMeta: { color: "#6b7280", fontSize: 12 },
+  contactActions: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
+  contactAction: { color: "#b91c1c", fontWeight: "700" },
+  contactFormCard: { borderWidth: 1, borderColor: "#fecaca", borderRadius: 16, backgroundColor: "#fff7f7", padding: 14, gap: 8, marginTop: 8 },
+  primaryToggle: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
+  primaryToggleOn: { borderColor: "#fca5a5", backgroundColor: "#fee2e2" },
+  primaryToggleText: { color: "#7f1d1d", fontWeight: "700" },
+
+  bottomBar: { position: "absolute", left: 0, right: 0, bottom: 0, height: 90, borderTopWidth: 1, borderTopColor: "#e5e7eb", backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 10 },
+  navItem: { width: 68, alignItems: "center", gap: 2 },
+  navLabel: { color: "#6b7280", fontSize: 12 },
+  navLabelOn: { color: "#b91c1c", fontWeight: "700" },
+  navSpacer: { width: 84 },
+
+  sosButton: {
+    position: "absolute",
+    bottom: 36,
+    alignSelf: "center",
+    width: 98,
+    height: 98,
+    borderRadius: 49,
+    borderWidth: 5,
+    borderColor: "#fecdd3",
+    backgroundColor: "#e3262f",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sosText: { color: "#fff", fontSize: 34 / 2, fontWeight: "900" },
+
+  sosOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#e3262f",
+    paddingHorizontal: 24,
+    paddingTop: 68,
+    gap: 14,
+  },
+  closeX: { position: "absolute", right: 20, top: 42 },
+  sosIconWrap: { alignItems: "center", marginTop: 56 },
+  sosTitle: { textAlign: "center", color: "#fff", fontSize: 60 / 2, fontWeight: "800" },
+  sosLocation: { textAlign: "center", color: "#fee2e2", fontSize: 20 / 1.2 },
+  sosPanel: { borderRadius: 20, backgroundColor: "#ef444455", padding: 18, gap: 6 },
+  sosPanelLine: { color: "#fff", fontSize: 18 },
+  sosPanelSub: { color: "#fecaca", fontSize: 20 / 1.2 },
+  sosMessageInput: { borderWidth: 1, borderColor: "#fca5a5", borderRadius: 12, minHeight: 76, textAlignVertical: "top", paddingHorizontal: 12, paddingVertical: 10, color: "#fff" },
+  sosActionRow: { flexDirection: "row", gap: 12, marginTop: 6 },
+  sosCancel: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: "#ffffff44", alignItems: "center", justifyContent: "center" },
+  sosSend: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  sosCancelText: { color: "#fff", fontSize: 19, fontWeight: "700" },
+  sosSendText: { color: "#b91c1c", fontSize: 19, fontWeight: "800" },
 });

@@ -1,8 +1,13 @@
 import axios from 'axios'
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_BACKEND_URL ||
+  'http://192.168.1.18:8000'
+
 const ApiClient = () => {
   const instance = axios.create({
-    baseURL: 'http://127.0.0.1:8000'
+    baseURL: API_BASE_URL.replace(/\/$/, '')
   })
 
   instance.interceptors.request.use(async request => {

@@ -43,6 +43,31 @@ export class EmergencyContactService {
     }
   }
 
+  private sanitizeContactPayload(
+    payload: CreateEmergencyContactDto | UpdateEmergencyContactDto,
+  ) {
+    const data: Partial<CreateEmergencyContactDto> = {};
+
+    if (typeof payload.name === "string") {
+      data.name = payload.name.trim();
+    }
+
+    if (typeof payload.phoneNumber === "string") {
+      data.phoneNumber = payload.phoneNumber.trim();
+    }
+
+    if (typeof payload.relationship === "string") {
+      const relationship = payload.relationship.trim();
+      data.relationship = relationship || undefined;
+    }
+
+    if (typeof payload.isPrimary === "boolean") {
+      data.isPrimary = payload.isPrimary;
+    }
+
+    return data;
+  }
+
   async listByUserId(userId: string) {
     await this.ensureUserExists(userId);
     return await this.emergencyContactModel
@@ -54,17 +79,26 @@ export class EmergencyContactService {
 
   async createByUserId(userId: string, payload: CreateEmergencyContactDto) {
     await this.ensureUserExists(userId);
+    const userObjectId = this.toObjectId(userId);
+    const safePayload = this.sanitizeContactPayload(payload);
 
-    if (payload.isPrimary) {
+    const totalContacts = await this.emergencyContactModel.countDocuments({
+      userId: userObjectId,
+    });
+    if (totalContacts >= 5) {
+      throw new BadRequestException("You can add up to 5 emergency contacts only.");
+    }
+
+    if (safePayload.isPrimary) {
       await this.emergencyContactModel.updateMany(
-        { userId: this.toObjectId(userId) },
+        { userId: userObjectId },
         { isPrimary: false },
       );
     }
 
     return await this.emergencyContactModel.create({
-      userId: this.toObjectId(userId),
-      ...payload,
+      userId: userObjectId,
+      ...safePayload,
     });
   }
 
@@ -74,8 +108,9 @@ export class EmergencyContactService {
     payload: UpdateEmergencyContactDto,
   ) {
     await this.ensureUserExists(userId);
+    const safePayload = this.sanitizeContactPayload(payload);
 
-    if (payload.isPrimary) {
+    if (safePayload.isPrimary) {
       await this.emergencyContactModel.updateMany(
         { userId: this.toObjectId(userId) },
         { isPrimary: false },
@@ -87,7 +122,7 @@ export class EmergencyContactService {
         _id: this.toObjectId(contactId),
         userId: this.toObjectId(userId),
       },
-      payload,
+      safePayload,
       {
         new: true,
       },

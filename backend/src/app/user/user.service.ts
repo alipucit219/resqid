@@ -15,6 +15,15 @@ import { User, UserDocument } from "./user.entity";
 import { Role } from "../auth/enums/role.enum";
 import { UserWithoutPassword } from "./user.types";
 
+type SelfRegistrationPayload = {
+  email: string;
+  fullName: string;
+  password: string;
+  phoneNumber: string;
+  dateOfBirth: string;
+  gender: string;
+};
+
 @Injectable()
 export class UserService {
   constructor(
@@ -36,6 +45,9 @@ export class UserService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phoneNumber: user.phoneNumber ?? null,
+      dateOfBirth: user.dateOfBirth ?? null,
+      gender: user.gender ?? null,
       isActive: user.isActive,
       role: user.role,
     };
@@ -91,6 +103,9 @@ export class UserService {
       fullName: body.fullName.trim(),
       password: encryptedPassword,
       role: body.role || Role.USER,
+      phoneNumber: body.phoneNumber ?? null,
+      dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+      gender: body.gender ?? null,
       isActive: body.isActive ?? true,
       deletedAt: null,
     });
@@ -99,6 +114,29 @@ export class UserService {
       ...this.sanitizeUser(user),
       initialPassword: plainPassword,
     };
+  }
+
+  async createSelfRegisteredUser(payload: SelfRegistrationPayload) {
+    const existing = await this.findByEmail(payload.email, false);
+    if (existing) {
+      throw new BadRequestException(
+        "User with the given email already exists.",
+      );
+    }
+
+    const encryptedPassword = await this.hashService.hashPassword(payload.password);
+
+    return await this.userModel.create({
+      email: payload.email.trim().toLowerCase(),
+      fullName: payload.fullName.trim(),
+      password: encryptedPassword,
+      role: Role.USER,
+      phoneNumber: payload.phoneNumber.trim(),
+      dateOfBirth: new Date(payload.dateOfBirth),
+      gender: payload.gender.trim().toLowerCase(),
+      isActive: true,
+      deletedAt: null,
+    });
   }
 
   async listAll(query: UserListAllRequestDto, requestingUserId?: string) {
@@ -153,6 +191,18 @@ export class UserService {
 
     if (payload.fullName !== undefined) {
       user.fullName = payload.fullName.trim();
+    }
+
+    if (payload.phoneNumber !== undefined) {
+      user.phoneNumber = payload.phoneNumber.trim();
+    }
+
+    if (payload.dateOfBirth !== undefined) {
+      user.dateOfBirth = new Date(payload.dateOfBirth);
+    }
+
+    if (payload.gender !== undefined) {
+      user.gender = payload.gender.trim().toLowerCase();
     }
 
     if (payload.isActive !== undefined) {

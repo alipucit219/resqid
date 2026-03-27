@@ -56,6 +56,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
       id: user.id,
       fullName: user.fullName,
       email: user.email,
+      phoneNumber: user.phoneNumber ?? null,
+      dateOfBirth: user.dateOfBirth ?? null,
+      gender: user.gender ?? null,
       role: user.role,
       isActive: user.isActive,
       session: {
@@ -69,4 +72,3 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     };
   }
 }
-

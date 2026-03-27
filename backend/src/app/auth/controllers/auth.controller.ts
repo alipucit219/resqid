@@ -11,6 +11,7 @@ import {
   ChangePasswordDto,
   ForgotPasswordDto,
   LoginDto,
+  RegisterDto,
   ResetPasswordDto,
 } from "../dtos";
 import { AuthService } from "../services/auth.service";
@@ -36,6 +37,17 @@ export class AuthController {
     const ipAddress = req.ip;
     const userAgent = req.headers["user-agent"];
     return this.authService.login(body, ipAddress, userAgent);
+  }
+
+  @Public()
+  @ApiOperation({
+    description: "Create a new mobile user account",
+  })
+  @Post("register")
+  async register(@Req() req, @Body() body: RegisterDto) {
+    const ipAddress = req.ip;
+    const userAgent = req.headers["user-agent"];
+    return await this.authService.register(body, ipAddress, userAgent);
   }
 
   @Public()

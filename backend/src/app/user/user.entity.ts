@@ -20,6 +20,15 @@ export class User {
   })
   email: string;
 
+  @Prop({ default: null, trim: true })
+  phoneNumber?: string | null;
+
+  @Prop({ default: null })
+  dateOfBirth?: Date | null;
+
+  @Prop({ default: null, trim: true, lowercase: true })
+  gender?: string | null;
+
   @Prop({ required: true, select: false })
   password: string;
 
@@ -53,4 +62,3 @@ UserSchema.set("toJSON", {
     return ret;
   },
 });
-

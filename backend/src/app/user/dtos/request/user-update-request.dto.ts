@@ -1,9 +1,12 @@
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
 } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
@@ -30,6 +33,36 @@ export class UserUpdateRequestDto {
   @IsString({ message: "Full Name should be a String" })
   @Transform(({ value }) => trim(value))
   fullName?: string;
+
+  @ApiPropertyOptional({
+    name: "phoneNumber",
+    type: String,
+  })
+  @IsOptional()
+  @IsString({ message: "Phone number should be a string" })
+  @Transform(({ value }) => (value ? trim(value) : value))
+  @Matches(/^\+?[0-9()\-\s]{7,20}$/, {
+    message: "Phone number format is invalid",
+  })
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    name: "dateOfBirth",
+    type: String,
+  })
+  @IsOptional()
+  @IsDateString({}, { message: "Date of birth must be a valid ISO date" })
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({
+    name: "gender",
+    type: String,
+  })
+  @IsOptional()
+  @IsString({ message: "Gender should be a string" })
+  @Transform(({ value }) => (value ? trim(lowerCase(value)) : value))
+  @IsIn(["male", "female", "other"])
+  gender?: string;
 
   @ApiPropertyOptional({
     name: "isActive",
