@@ -58,7 +58,7 @@ const LoginPage = () => {
   const { LoginIllustration, RightWrapper, FormControlLabel } = useLoginStyles()
 
   if (user && Object.keys(user).length > 0) {
-    window.location.href = '/apps/user/list'
+    window.location.href = '/dashboards'
   }
 
   //logic to remove vertical scrollbar at lg
@@ -104,14 +104,6 @@ const LoginPage = () => {
           }}
         >
           <Box sx={{ width: '100%', maxWidth: isLgOrAbove ? 400 : '100%' }}>
-            <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-              {'dark' === 'dark' ? (
-                <img width={150} alt='qr-code' src='/images/official-logo.png' />
-              ) : (
-                <img width={150} alt='qr-code' src='/images/official-logo.png' />
-              )}
-            </Box>
-
             {forgetActive ? (
               <ForegetPassword setForgetActive={setForgetActive} />
             ) : isTwofa ? (

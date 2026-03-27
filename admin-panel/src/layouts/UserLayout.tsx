@@ -43,7 +43,7 @@ const UserLayout = ({ children, contentHeightFixed }: Props) => {
   const [modifyHorizontalNavItems, setModifyHorizontalNavItems] = useState<any>([])
 
   const filterNavItemsByPermissions = (navItems: any[], userPermissionKeys: string[]): any[] => {
-    const alwaysVisibleItems = new Set(['Spaces', 'User', 'Staff'])
+    const alwaysVisibleItems = new Set(['Dashboard', 'Users', 'Spaces', 'User', 'Staff'])
 
     return navItems.reduce((filteredItems: any[], item: any) => {
       if (item?.children?.length) {

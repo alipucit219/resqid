@@ -1,5 +1,5 @@
-import UserPage from './apps/user/list';
+import DashboardView from 'src/views/dashboards'
 
-const Home = () => <UserPage />
+const Home = () => <DashboardView />
 
 export default Home

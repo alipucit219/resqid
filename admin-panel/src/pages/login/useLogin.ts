@@ -63,7 +63,7 @@ const useLogin = () => {
       dispatch(saveAccessToken(accessToken as any))
       dispatch(saveUserData(userData as any))
       toast.success(response?.data?.message)
-      router.push('apps/user/list')
+      router.push('/dashboards')
       setTimeout(() => {
         dispatch(setIsTwofa(false))
       }, 2000)
@@ -111,7 +111,7 @@ const useLogin = () => {
         dispatch(saveAccessToken(res?.data?.accessToken))
         dispatch(saveUserData(res?.data?.user))
         toast.success(res?.data?.message)
-        window.location.href = '/dashboards'
+        router.push('/dashboards')
       }
     } catch (error: any) {
       toast.error(error?.response?.data?.message)

@@ -3,6 +3,7 @@ import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useSta
 import {
   Alert,
   Image,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,12 +13,14 @@ import {
   View,
 } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";
 import * as SQLite from "expo-sqlite";
+import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-type AuthScreen = "login" | "register" | "forgot" | "reset" | "public" | "offline";
+type AuthScreen = "login" | "register" | "public";
 type Tab = "home" | "profile" | "qr" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
@@ -64,10 +67,37 @@ const resolveApiBase = () => {
   return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
 };
 const API = resolveApiBase();
+const API_ORIGIN = API.replace(/\/v\d+$/i, "");
+const normalizeEmergencyUrl = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (["127.0.0.1", "localhost", "0.0.0.0"].includes(parsed.hostname.toLowerCase())) {
+      const origin = new URL(API_ORIGIN);
+      parsed.protocol = origin.protocol;
+      parsed.hostname = origin.hostname;
+      parsed.port = origin.port;
+      return parsed.toString().replace(/\/$/, "");
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+};
 
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const GENDERS: Gender[] = ["male", "female", "other"];
 const STATUS_AUTO_HIDE_MS = 3500;
+const EMPTY_REGISTER = {
+  fullName: "",
+  email: "",
+  phoneNumber: "",
+  dateOfBirth: "",
+  gender: "",
+  password: "",
+  confirmPassword: "",
+};
 const EMPTY_PROFILE: Profile = {
   bloodGroup: "",
   allergies: [],
@@ -90,6 +120,16 @@ const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x || "").tri
 const asDate = (v: unknown) => {
   const d = new Date(String(v || ""));
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+};
+const toYmd = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+const ymdToDate = (value: string) => {
+  const parsed = new Date(`${value || ""}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 const tokenFrom = (v: string) =>
   v.includes("/emergency-access/")
@@ -235,20 +275,12 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
 
   const [login, setLogin] = useState({ email: "", password: "" });
-  const [register, setRegister] = useState({
-    fullName: "",
-    email: "",
-    phoneNumber: "",
-    dateOfBirth: "",
-    gender: "",
-    password: "",
-    confirmPassword: "",
-  });
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [reset, setReset] = useState({ token: "", newPassword: "", confirmPassword: "" });
+  const [register, setRegister] = useState({ ...EMPTY_REGISTER });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirm, setShowRegConfirm] = useState(false);
+  const [showRegisterDobPicker, setShowRegisterDobPicker] = useState(false);
+  const [showProfileDobPicker, setShowProfileDobPicker] = useState(false);
 
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
@@ -290,6 +322,34 @@ export default function App() {
   const setOk = (msg: string) => {
     setStatus(msg);
     setStatusTone("success");
+  };
+  const setQrSafe = (value: QrData | null) => {
+    if (!value) {
+      setQr(null);
+      return;
+    }
+    setQr({
+      ...value,
+      emergencyUrl: normalizeEmergencyUrl(value.emergencyUrl),
+    });
+  };
+  const resetRegisterForm = () => {
+    setRegister({ ...EMPTY_REGISTER });
+    setShowRegPassword(false);
+    setShowRegConfirm(false);
+    setShowRegisterDobPicker(false);
+  };
+  const onRegisterDobChange = (_: DateTimePickerEvent, selected?: Date) => {
+    setShowRegisterDobPicker(false);
+    if (selected) {
+      setRegister((prev) => ({ ...prev, dateOfBirth: toYmd(selected) }));
+    }
+  };
+  const onProfileDobChange = (_: DateTimePickerEvent, selected?: Date) => {
+    setShowProfileDobPicker(false);
+    if (selected) {
+      setProfile((prev) => ({ ...prev, dateOfBirth: toYmd(selected) }));
+    }
   };
 
   const run = async (fn: () => Promise<void>) => {
@@ -382,13 +442,13 @@ export default function App() {
 
     const qrRes = await api<QrData>("/me/qr", "GET", t);
     if (qrRes?.qrCodeDataUrl || qrRes?.emergencyUrl) {
-      setQr(qrRes);
+      setQrSafe(qrRes);
     } else {
       try {
-        setQr(await api<QrData>("/me/qr/regenerate", "POST", t));
+        setQrSafe(await api<QrData>("/me/qr/regenerate", "POST", t));
       } catch {
         const cached = db ? await getKV<QrData>(db, "qr_data") : null;
-        setQr(cached);
+        setQrSafe(cached);
       }
     }
 
@@ -559,29 +619,9 @@ export default function App() {
       setToken(response.accessToken);
       setUser(response.user);
       setTab("home");
+      resetRegisterForm();
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Account created.");
-    });
-
-  const forgotPass = () =>
-    run(async () => {
-      if (!isOnline) throw new Error("Internet is required.");
-      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, {
-        email: forgotEmail.trim(),
-      });
-      setOk(response.message || "Reset instructions sent.");
-    });
-
-  const resetPass = () =>
-    run(async () => {
-      if (!isOnline) throw new Error("Internet is required.");
-      if (reset.newPassword !== reset.confirmPassword) throw new Error("Passwords do not match.");
-      const response = await api<{ message: string }>("/auth/reset-password", "POST", undefined, {
-        token: reset.token.trim(),
-        newPassword: reset.newPassword,
-      });
-      setOk(response.message || "Password reset.");
-      setAuthScreen("login");
     });
 
   const saveProfileCore = async () => {
@@ -746,8 +786,23 @@ export default function App() {
   const regenQr = () =>
     run(async () => {
       if (!isOnline) throw new Error("Internet is required for QR regenerate.");
-      setQr(await api<QrData>("/me/qr/regenerate", "POST", token));
+      setQrSafe(await api<QrData>("/me/qr/regenerate", "POST", token));
       setOk("QR regenerated.");
+    });
+  const copyEmergencyUrl = () =>
+    run(async () => {
+      const emergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
+      if (!emergencyUrl) throw new Error("No emergency URL available yet.");
+      await Clipboard.setStringAsync(emergencyUrl);
+      setOk("Emergency URL copied.");
+    });
+  const openEmergencyUrl = () =>
+    run(async () => {
+      const emergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
+      if (!emergencyUrl) throw new Error("No emergency URL available yet.");
+      const canOpen = await Linking.canOpenURL(emergencyUrl);
+      if (!canOpen) throw new Error("Cannot open this emergency URL on this device.");
+      await Linking.openURL(emergencyUrl);
     });
 
   const openScanner = () =>
@@ -846,6 +901,7 @@ export default function App() {
   };
 
   const statusStyle = statusTone === "error" ? s.statusError : statusTone === "success" ? s.statusSuccess : s.statusInfo;
+  const visibleEmergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
 
   if (!ready) {
     return (
@@ -907,18 +963,16 @@ export default function App() {
               </Pressable>
               <Text style={s.centerText}>
                 Don't have an account?{" "}
-                <Text style={s.link} onPress={() => setAuthScreen("register")}>Create Account</Text>
+                <Text style={s.link} onPress={() => { resetRegisterForm(); setAuthScreen("register"); }}>Create Account</Text>
               </Text>
-              <Text style={s.linkSoft} onPress={() => setAuthScreen("forgot")}>Forgot password?</Text>
               <Text style={s.linkSoft} onPress={() => setAuthScreen("public")}>Scan a QR code without login</Text>
-              <Text style={s.linkSoft} onPress={() => setAuthScreen("offline")}>Offline Emergency View</Text>
             </View>
           )}
 
           {authScreen === "register" && (
             <View style={s.formWrap}>
               <View style={s.authTop}>
-                <Pressable onPress={() => setAuthScreen("login")}>
+                <Pressable onPress={() => { resetRegisterForm(); setAuthScreen("login"); }}>
                   <Ionicons name="chevron-back" size={24} color="#6b7280" />
                 </Pressable>
                 <View>
@@ -955,12 +1009,12 @@ export default function App() {
               <View style={s.rowGap}>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Date of Birth</Text>
-                  <Field
-                    icon="calendar-outline"
-                    placeholder="YYYY-MM-DD"
-                    value={register.dateOfBirth}
-                    onChangeText={(v) => setRegister((p) => ({ ...p, dateOfBirth: v }))}
-                  />
+                  <Pressable style={s.fieldWrap} onPress={() => setShowRegisterDobPicker(true)}>
+                    <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+                    <Text style={register.dateOfBirth ? s.datePickerText : s.datePickerPlaceholder}>
+                      {register.dateOfBirth || "Select date of birth"}
+                    </Text>
+                  </Pressable>
                 </View>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Gender</Text>
@@ -977,6 +1031,15 @@ export default function App() {
                   </View>
                 </View>
               </View>
+              {showRegisterDobPicker && (
+                <DateTimePicker
+                  value={ymdToDate(register.dateOfBirth)}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={onRegisterDobChange}
+                />
+              )}
 
               <Text style={s.formLabel}>Password</Text>
               <Field
@@ -1017,51 +1080,8 @@ export default function App() {
                 <Text style={s.primaryBtnText}>{busy ? "Creating..." : "Create Account"}</Text>
               </Pressable>
               <Text style={s.centerText}>
-                Already have an account? <Text style={s.link} onPress={() => setAuthScreen("login")}>Sign In</Text>
+                Already have an account? <Text style={s.link} onPress={() => { resetRegisterForm(); setAuthScreen("login"); }}>Sign In</Text>
               </Text>
-            </View>
-          )}
-
-          {authScreen === "forgot" && (
-            <View style={s.formWrap}>
-              <View style={s.authTop}>
-                <Pressable onPress={() => setAuthScreen("login")}>
-                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
-                </Pressable>
-                <Text style={s.authTitle}>Forgot Password</Text>
-              </View>
-              <Text style={s.formLabel}>Email</Text>
-              <Field
-                icon="mail-outline"
-                placeholder="Account email"
-                value={forgotEmail}
-                onChangeText={setForgotEmail}
-                keyboardType="email-address"
-              />
-              <Pressable style={s.primaryBtn} onPress={forgotPass}>
-                <Text style={s.primaryBtnText}>{busy ? "Sending..." : "Send Reset Link"}</Text>
-              </Pressable>
-              <Text style={s.linkSoft} onPress={() => setAuthScreen("reset")}>Have token? Reset password</Text>
-            </View>
-          )}
-
-          {authScreen === "reset" && (
-            <View style={s.formWrap}>
-              <View style={s.authTop}>
-                <Pressable onPress={() => setAuthScreen("login")}>
-                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
-                </Pressable>
-                <Text style={s.authTitle}>Reset Password</Text>
-              </View>
-              <Text style={s.formLabel}>Reset Token</Text>
-              <Field icon="key-outline" placeholder="Paste token" value={reset.token} onChangeText={(v) => setReset((p) => ({ ...p, token: v }))} />
-              <Text style={s.formLabel}>New Password</Text>
-              <Field icon="lock-closed-outline" placeholder="New password" value={reset.newPassword} onChangeText={(v) => setReset((p) => ({ ...p, newPassword: v }))} secureTextEntry />
-              <Text style={s.formLabel}>Confirm Password</Text>
-              <Field icon="lock-closed-outline" placeholder="Confirm password" value={reset.confirmPassword} onChangeText={(v) => setReset((p) => ({ ...p, confirmPassword: v }))} secureTextEntry />
-              <Pressable style={s.primaryBtn} onPress={resetPass}>
-                <Text style={s.primaryBtnText}>{busy ? "Saving..." : "Reset Password"}</Text>
-              </Pressable>
             </View>
           )}
 
@@ -1110,26 +1130,6 @@ export default function App() {
                   )}
                 </>
               )}
-            </View>
-          )}
-
-          {authScreen === "offline" && (
-            <View style={s.formWrap}>
-              <View style={s.authTop}>
-                <Pressable onPress={() => setAuthScreen("login")}>
-                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
-                </Pressable>
-                <Text style={s.authTitle}>Offline Emergency View</Text>
-              </View>
-              <View style={s.publicCard}>
-                <Text style={s.publicName}>{snapshot?.user.fullName || "No cached profile yet"}</Text>
-                <Text style={s.publicLine}>Blood Group: {snapshot?.profile.bloodGroup || "Not set"}</Text>
-                <Text style={s.publicLine}>Allergies: {snapshot?.profile.allergies.join(", ") || "None"}</Text>
-                <Text style={s.publicLine}>Conditions: {snapshot?.profile.chronicConditions.join(", ") || "None"}</Text>
-                <Text style={s.publicLine}>Medications: {snapshot?.profile.medications.join(", ") || "None"}</Text>
-                <Text style={s.publicLine}>Emergency Contacts: {snapshot?.contacts.length || 0}</Text>
-                <Text style={s.snapshotStamp}>Cached at: {snapshot ? new Date(snapshot.savedAt).toLocaleString() : "-"}</Text>
-              </View>
             </View>
           )}
 
@@ -1358,7 +1358,12 @@ export default function App() {
               <View style={s.summaryRow}>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Date of Birth</Text>
-                  <TextInput style={s.inlineInput} placeholder="YYYY-MM-DD" value={profile.dateOfBirth} onChangeText={(v) => setProfile((p) => ({ ...p, dateOfBirth: v }))} />
+                  <Pressable style={[s.inlineInput, s.inlinePicker]} onPress={() => setShowProfileDobPicker(true)}>
+                    <Ionicons name="calendar-outline" size={18} color="#6b7280" />
+                    <Text style={profile.dateOfBirth ? s.inlinePickerText : s.inlinePickerPlaceholder}>
+                      {profile.dateOfBirth || "Select DOB"}
+                    </Text>
+                  </Pressable>
                 </View>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Gender</Text>
@@ -1371,6 +1376,15 @@ export default function App() {
                   </View>
                 </View>
               </View>
+              {showProfileDobPicker && (
+                <DateTimePicker
+                  value={ymdToDate(profile.dateOfBirth)}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={onProfileDobChange}
+                />
+              )}
               <Text style={s.formLabel}>Emergency Notes</Text>
               <TextInput style={s.textArea} multiline value={profile.emergencyNotes} onChangeText={(v) => setProfile((p) => ({ ...p, emergencyNotes: v }))} placeholder="Add emergency notes" />
             </View>
@@ -1418,12 +1432,22 @@ export default function App() {
               )}
             </View>
             <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
+            <View style={s.urlCard}>
+              <Text style={s.urlLabel}>Emergency URL</Text>
+              <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
+              <View style={s.urlActionRow}>
+                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={copyEmergencyUrl}>
+                  <Ionicons name="copy-outline" size={18} color="#111827" />
+                  <Text style={s.ghostBtnText}>Copy Link</Text>
+                </Pressable>
+                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={openEmergencyUrl}>
+                  <Ionicons name="open-outline" size={18} color="#111827" />
+                  <Text style={s.ghostBtnText}>Open in Browser</Text>
+                </Pressable>
+              </View>
+            </View>
 
             <View style={s.qrActionRow}>
-              <Pressable style={s.ghostBtn} onPress={() => setInfo(qr?.emergencyUrl || "No emergency URL available yet.") }>
-                <Ionicons name="download-outline" size={18} color="#111827" />
-                <Text style={s.ghostBtnText}>Download</Text>
-              </Pressable>
               <Pressable style={s.subtleBtn} onPress={regenQr}><Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text></Pressable>
             </View>
           </>
@@ -1568,6 +1592,8 @@ const s = StyleSheet.create({
   fieldWrapMulti: { minHeight: 90, alignItems: "flex-start", paddingVertical: 12 },
   fieldInput: { flex: 1, fontSize: 17, color: "#111827" },
   fieldInputMulti: { minHeight: 58, textAlignVertical: "top" },
+  datePickerText: { flex: 1, fontSize: 16, color: "#111827" },
+  datePickerPlaceholder: { flex: 1, fontSize: 16, color: "#9ca3af" },
 
   authTop: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
   authTitle: { fontSize: 34, fontWeight: "800", color: "#111827" },
@@ -1709,6 +1735,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     color: "#111827",
   },
+  inlinePicker: { flexDirection: "row", alignItems: "center", gap: 8 },
+  inlinePickerText: { color: "#111827", fontSize: 14 },
+  inlinePickerPlaceholder: { color: "#9ca3af", fontSize: 14 },
   inlineBtn: { borderRadius: 12, minHeight: 44, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
   inlineBtnYellow: { backgroundColor: "#f59e0b" },
   inlineBtnBlue: { backgroundColor: "#3b82f6" },
@@ -1740,6 +1769,11 @@ const s = StyleSheet.create({
   qrImage: { width: 290, height: 290 },
   qrPlaceholder: { color: "#6b7280" },
   qrHint: { textAlign: "center", color: "#6b7280", fontSize: 30 / 2, marginTop: 10 },
+  urlCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, backgroundColor: "#fff", padding: 12, marginTop: 10, gap: 6 },
+  urlLabel: { color: "#374151", fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+  urlText: { color: "#111827", fontSize: 13 },
+  urlActionRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  urlActionBtn: { flex: 1 },
   qrActionRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   ghostBtn: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, minHeight: 44, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, backgroundColor: "#fff" },
   ghostBtnText: { color: "#111827", fontWeight: "700" },

@@ -11,7 +11,10 @@ export class ConfigService {
   private readonly envConfig: IEnvSchema;
 
   constructor() {
-    dotenv.config();
+    dotenv.config({
+      path: `${AppRootPath.path}/.env`,
+      override: true,
+    });
     this.envConfig = this.validateEnvSchema(process.env);
   }
 
