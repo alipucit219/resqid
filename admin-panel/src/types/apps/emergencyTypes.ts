@@ -35,6 +35,7 @@ export type EmergencyContactType = {
   user: EmergencyUserType
   name: string
   phoneNumber: string
+  email?: string
   relationship?: string
   isPrimary: boolean
 }
@@ -65,4 +66,3 @@ export type PanicAlertType = {
   createdAt: string
   dispatches?: PanicAlertDispatchType[]
 }
-

@@ -3,11 +3,11 @@ import axios from 'axios'
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   process.env.NEXT_BACKEND_URL ||
-  'http://192.168.1.18:8000'
+  'http://localhost:8000'
 
 const ApiClient = () => {
   const instance = axios.create({
-    baseURL: API_BASE_URL.replace(/\/$/, '')
+    baseURL: API_BASE_URL.trim().replace(/\s+/g, '').replace(/\/$/, '')
   })
 
   instance.interceptors.request.use(async request => {

@@ -3,7 +3,9 @@ import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useSta
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -27,6 +29,8 @@ type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "conta
 type Gender = "male" | "female" | "other";
 type StatusTone = "success" | "error" | "info";
 type IconName = ComponentProps<typeof Ionicons>["name"];
+type ToastItem = { id: number; message: string; tone: StatusTone };
+type AuthFieldErrors = Partial<Record<"fullName" | "email" | "phoneNumber" | "dateOfBirth" | "gender" | "password" | "confirmPassword", string>>;
 
 type User = {
   id: string;
@@ -38,7 +42,7 @@ type User = {
   dateOfBirth?: string | null;
   gender?: Gender | null;
 };
-type Contact = { id: string; name: string; phoneNumber: string; relationship?: string | null; isPrimary?: boolean };
+type Contact = { id: string; name: string; phoneNumber: string; email?: string | null; relationship?: string | null; isPrimary?: boolean };
 type Profile = {
   bloodGroup: string;
   allergies: string[];
@@ -61,12 +65,38 @@ type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Cont
 type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
 type QueueRow = { id: number; kind: QueueKind; payload: string };
 
-const resolveApiBase = () => {
-  const envBase = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL;
-  const candidate = (envBase || "http://192.168.1.18:8000/").replace(/\/$/, "");
+const normalizeApiBase = (value: string) => {
+  const candidate = value.replace(/\/$/, "");
   return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
 };
-const API = resolveApiBase();
+const resolveApiBases = () => {
+  const webBase = process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
+  const iosBase = process.env.EXPO_PUBLIC_IOS_API_BASE_URL;
+  const androidBase = process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL;
+  const nativeBase = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL;
+  const fallbackBase =
+    Platform.OS === "web"
+      ? "http://localhost:8000"
+      : Platform.OS === "android"
+        ? "http://10.0.2.2:8000"
+        : "http://localhost:8000";
+  const priority =
+    Platform.OS === "web"
+      ? [webBase, nativeBase, fallbackBase]
+      : Platform.OS === "ios"
+        ? [iosBase, nativeBase, fallbackBase]
+        : [androidBase, nativeBase, "http://10.0.2.2:8000", fallbackBase];
+
+  const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, fallbackBase]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .map((item) => normalizeApiBase(item));
+
+  return [...new Set(withAlternates)];
+};
+const API_BASES = resolveApiBases();
+let ACTIVE_API = API_BASES[0];
+const API = ACTIVE_API;
 const API_ORIGIN = API.replace(/\/v\d+$/i, "");
 const normalizeEmergencyUrl = (value?: string | null) => {
   const raw = String(value || "").trim();
@@ -89,6 +119,7 @@ const normalizeEmergencyUrl = (value?: string | null) => {
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const GENDERS: Gender[] = ["male", "female", "other"];
 const STATUS_AUTO_HIDE_MS = 3500;
+const REQUEST_TIMEOUT_MS = 7000;
 const EMPTY_REGISTER = {
   fullName: "",
   email: "",
@@ -136,12 +167,14 @@ const tokenFrom = (v: string) =>
     ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
     : v.trim();
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
-const netErr = (e: unknown) => /network request failed|fetch failed|failed to fetch/i.test(errMsg(e));
+const netErr = (e: unknown) =>
+  /network request failed|fetch failed|failed to fetch|abort|timeout|timed out/i.test(errMsg(e));
 const labelCount = (count: number, singular: string, plural?: string) =>
   `${count} ${count === 1 ? singular : plural || `${singular}s`}`;
 const toContactBody = (payload: any) => ({
   name: String(payload?.name || "").trim(),
   phoneNumber: String(payload?.phoneNumber || "").trim(),
+  email: String(payload?.email || "").trim().toLowerCase() || undefined,
   relationship: payload?.relationship ? String(payload.relationship).trim() : undefined,
   isPrimary: Boolean(payload?.isPrimary),
 });
@@ -151,26 +184,48 @@ async function api<T>(path: string, method: Method = "GET", token?: string, body
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
+  const order = [ACTIVE_API, ...API_BASES.filter((base) => base !== ACTIVE_API)];
+  let lastNetworkError: unknown = null;
+
+  for (const base of order) {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const res = await fetch(`${base}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          Array.isArray(data?.message)
+            ? data.message.join(", ")
+            : data?.message || `${method} ${path} failed (${res.status})`,
+        );
+      }
+
+      ACTIVE_API = base;
+      return data as T;
+    } catch (error) {
+      if (!netErr(error)) throw error;
+      lastNetworkError = error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
-  if (!res.ok) {
-    throw new Error(
-      Array.isArray(data?.message)
-        ? data.message.join(", ")
-        : data?.message || `${method} ${path} failed (${res.status})`,
-    );
-  }
-  return data as T;
+  throw new Error(
+    `Network request failed. Tried: ${order.join(", ")}. ${errMsg(lastNetworkError)}`,
+  );
 }
 
 async function initDb(db: SQLite.SQLiteDatabase) {
@@ -269,13 +324,14 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [tab, setTab] = useState<Tab>("home");
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
-  const [statusTone, setStatusTone] = useState<StatusTone>("info");
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [token, setToken] = useState("");
   const [user, setUser] = useState<User | null>(null);
 
   const [login, setLogin] = useState({ email: "", password: "" });
+  const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [register, setRegister] = useState({ ...EMPTY_REGISTER });
+  const [registerErrors, setRegisterErrors] = useState<AuthFieldErrors>({});
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirm, setShowRegConfirm] = useState(false);
@@ -297,6 +353,7 @@ export default function App() {
     id: "",
     name: "",
     phoneNumber: "",
+    email: "",
     relationship: "",
     isPrimary: false,
   });
@@ -313,15 +370,31 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const syncing = useRef(false);
+  const toastTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const firstName = useMemo(() => user?.fullName?.split(" ")[0] || "Demo", [user?.fullName]);
 
+  const dismissToast = (id: number) => {
+    const timer = toastTimers.current[id];
+    if (timer) {
+      clearTimeout(timer);
+      delete toastTimers.current[id];
+    }
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+  const pushToast = (message: string, tone: StatusTone = "info") => {
+    const finalMessage = String(message || "").trim();
+    if (!finalMessage) return;
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((prev) => [...prev, { id, message: finalMessage, tone }]);
+    toastTimers.current[id] = setTimeout(() => {
+      dismissToast(id);
+    }, STATUS_AUTO_HIDE_MS);
+  };
   const setInfo = (msg: string) => {
-    setStatus(msg);
-    setStatusTone("info");
+    pushToast(msg, "info");
   };
   const setOk = (msg: string) => {
-    setStatus(msg);
-    setStatusTone("success");
+    pushToast(msg, "success");
   };
   const setQrSafe = (value: QrData | null) => {
     if (!value) {
@@ -335,6 +408,7 @@ export default function App() {
   };
   const resetRegisterForm = () => {
     setRegister({ ...EMPTY_REGISTER });
+    setRegisterErrors({});
     setShowRegPassword(false);
     setShowRegConfirm(false);
     setShowRegisterDobPicker(false);
@@ -354,12 +428,10 @@ export default function App() {
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
-    setStatus("");
     try {
       await fn();
     } catch (e) {
-      setStatus(errMsg(e));
-      setStatusTone("error");
+      pushToast(errMsg(e), "error");
     } finally {
       setBusy(false);
     }
@@ -394,6 +466,7 @@ export default function App() {
     emergencyContacts: snap.contacts.map((c) => ({
       name: c.name,
       phoneNumber: c.phoneNumber,
+      email: c.email || null,
       relationship: c.relationship || null,
       isPrimary: !!c.isPrimary,
     })),
@@ -542,14 +615,13 @@ export default function App() {
     void hydrate(token, user, true);
   }, [ready, token, user?.id]);
 
-  useEffect(() => {
-    if (!status) return;
-    const timer = setTimeout(() => {
-      setStatus("");
-    }, STATUS_AUTO_HIDE_MS);
-
-    return () => clearTimeout(timer);
-  }, [status]);
+  useEffect(
+    () => () => {
+      Object.values(toastTimers.current).forEach((timer) => clearTimeout(timer));
+      toastTimers.current = {};
+    },
+    [],
+  );
 
   useEffect(() => {
     void syncQ();
@@ -584,6 +656,12 @@ export default function App() {
   const loginUser = () =>
     run(async () => {
       if (!isOnline) throw new Error("No internet. Use Offline Emergency View.");
+      const nextErrors: Partial<Record<"email" | "password", string>> = {};
+      if (!login.email.trim()) nextErrors.email = "Email is required.";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login.email.trim())) nextErrors.email = "Please enter a valid email.";
+      if (!login.password.trim()) nextErrors.password = "Password is required.";
+      setLoginErrors(nextErrors);
+      if (Object.keys(nextErrors).length) throw new Error(Object.values(nextErrors)[0] || "Invalid login details.");
       const response = await api<{ accessToken: string; user: User; message: string }>(
         "/auth/login",
         "POST",
@@ -592,6 +670,7 @@ export default function App() {
       );
       setToken(response.accessToken);
       setUser(response.user);
+      setLoginErrors({});
       setTab("home");
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Signed in.");
@@ -600,11 +679,23 @@ export default function App() {
   const registerUser = () =>
     run(async () => {
       if (!isOnline) throw new Error("Internet is required to register.");
-      if (register.password !== register.confirmPassword) throw new Error("Passwords do not match.");
+      const nextErrors: AuthFieldErrors = {};
+      if (!register.fullName.trim()) nextErrors.fullName = "Full name is required.";
+      if (!register.email.trim()) nextErrors.email = "Email is required.";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(register.email.trim())) nextErrors.email = "Please enter a valid email.";
+      if (!register.phoneNumber.trim()) nextErrors.phoneNumber = "Phone number is required.";
+      if (!register.dateOfBirth.trim()) nextErrors.dateOfBirth = "Date of birth is required.";
+      if (!register.gender.trim()) nextErrors.gender = "Gender is required.";
+      if (!register.password) nextErrors.password = "Password is required.";
+      else if (register.password.length < 6) nextErrors.password = "Password must be at least 6 characters.";
+      if (!register.confirmPassword) nextErrors.confirmPassword = "Confirm password is required.";
+      else if (register.password !== register.confirmPassword) nextErrors.confirmPassword = "Passwords do not match.";
+      setRegisterErrors(nextErrors);
+      if (Object.keys(nextErrors).length) throw new Error(Object.values(nextErrors)[0] || "Invalid registration details.");
 
       const payload = {
         fullName: register.fullName.trim(),
-        email: register.email.trim(),
+        email: register.email.trim().toLowerCase(),
         phoneNumber: register.phoneNumber.trim(),
         dateOfBirth: register.dateOfBirth.trim(),
         gender: register.gender.trim().toLowerCase(),
@@ -618,6 +709,8 @@ export default function App() {
       );
       setToken(response.accessToken);
       setUser(response.user);
+      setRegisterErrors({});
+      setLogin({ email: payload.email, password: payload.password });
       setTab("home");
       resetRegisterForm();
       await hydrate(response.accessToken, response.user);
@@ -676,7 +769,13 @@ export default function App() {
   const saveContact = () =>
     run(async () => {
       if (!contactForm.name.trim() || !contactForm.phoneNumber.trim()) {
-        throw new Error("Name and phone number are required.");
+        throw new Error("Name and contact number are required.");
+      }
+      if (!contactForm.email.trim()) {
+        throw new Error("Email is required.");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactForm.email.trim())) {
+        throw new Error("Please enter a valid email address.");
       }
       if (!contactForm.id && contacts.length >= 5) {
         throw new Error("You can add up to 5 emergency contacts.");
@@ -686,6 +785,7 @@ export default function App() {
         id: contactForm.id || `local-${Date.now()}`,
         name: contactForm.name.trim(),
         phoneNumber: contactForm.phoneNumber.trim(),
+        email: contactForm.email.trim().toLowerCase(),
         relationship: contactForm.relationship.trim() || undefined,
         isPrimary: contactForm.isPrimary,
       };
@@ -702,7 +802,7 @@ export default function App() {
           }
           setContacts(await api<Contact[]>("/me/emergency-contacts", "GET", token));
           setShowContactForm(false);
-          setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
+          setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
           setOk("Contact saved.");
           return;
         } catch (e) {
@@ -713,7 +813,7 @@ export default function App() {
       applyLocal();
       await queue("contact_upsert", payload);
       setShowContactForm(false);
-      setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
+      setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
       setOk("Contact saved offline.");
     });
 
@@ -875,12 +975,13 @@ export default function App() {
 
   const openContactEditor = (contact?: Contact) => {
     if (!contact) {
-      setContactForm({ id: "", name: "", phoneNumber: "", relationship: "", isPrimary: false });
+      setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
     } else {
       setContactForm({
         id: contact.id,
         name: contact.name,
         phoneNumber: contact.phoneNumber,
+        email: contact.email || "",
         relationship: contact.relationship || "",
         isPrimary: !!contact.isPrimary,
       });
@@ -900,7 +1001,6 @@ export default function App() {
     setInfo("Logged out.");
   };
 
-  const statusStyle = statusTone === "error" ? s.statusError : statusTone === "success" ? s.statusSuccess : s.statusInfo;
   const visibleEmergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
 
   if (!ready) {
@@ -922,7 +1022,8 @@ export default function App() {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="dark" />
-        <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
           <View style={s.logoBlock}>
             <View style={s.logoSquare}>
               <Ionicons name="shield-checkmark-outline" size={36} color="#fff" />
@@ -938,15 +1039,22 @@ export default function App() {
                 icon="mail-outline"
                 placeholder="Enter your email"
                 value={login.email}
-                onChangeText={(v) => setLogin((p) => ({ ...p, email: v }))}
+                onChangeText={(v) => {
+                  setLogin((p) => ({ ...p, email: v }));
+                  setLoginErrors((p) => ({ ...p, email: undefined }));
+                }}
                 keyboardType="email-address"
               />
+              {!!loginErrors.email && <Text style={s.fieldError}>{loginErrors.email}</Text>}
               <Text style={s.formLabel}>Password</Text>
               <Field
                 icon="lock-closed-outline"
                 placeholder="Enter your password"
                 value={login.password}
-                onChangeText={(v) => setLogin((p) => ({ ...p, password: v }))}
+                onChangeText={(v) => {
+                  setLogin((p) => ({ ...p, password: v }));
+                  setLoginErrors((p) => ({ ...p, password: undefined }));
+                }}
                 secureTextEntry={!showLoginPassword}
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
@@ -958,7 +1066,8 @@ export default function App() {
                   </Pressable>
                 }
               />
-              <Pressable style={s.primaryBtn} onPress={loginUser}>
+              {!!loginErrors.password && <Text style={s.fieldError}>{loginErrors.password}</Text>}
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={loginUser}>
                 <Text style={s.primaryBtnText}>{busy ? "Signing In..." : "Sign In"}</Text>
               </Pressable>
               <Text style={s.centerText}>
@@ -986,25 +1095,37 @@ export default function App() {
                 icon="person-outline"
                 placeholder="Enter your full name"
                 value={register.fullName}
-                onChangeText={(v) => setRegister((p) => ({ ...p, fullName: v }))}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, fullName: v }));
+                  setRegisterErrors((p) => ({ ...p, fullName: undefined }));
+                }}
                 autoCapitalize="words"
               />
+              {!!registerErrors.fullName && <Text style={s.fieldError}>{registerErrors.fullName}</Text>}
               <Text style={s.formLabel}>Email</Text>
               <Field
                 icon="mail-outline"
                 placeholder="Enter your email"
                 value={register.email}
-                onChangeText={(v) => setRegister((p) => ({ ...p, email: v }))}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, email: v }));
+                  setRegisterErrors((p) => ({ ...p, email: undefined }));
+                }}
                 keyboardType="email-address"
               />
+              {!!registerErrors.email && <Text style={s.fieldError}>{registerErrors.email}</Text>}
               <Text style={s.formLabel}>Phone Number</Text>
               <Field
                 icon="call-outline"
                 placeholder="+92 300 1234567"
                 value={register.phoneNumber}
-                onChangeText={(v) => setRegister((p) => ({ ...p, phoneNumber: v }))}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, phoneNumber: v }));
+                  setRegisterErrors((p) => ({ ...p, phoneNumber: undefined }));
+                }}
                 keyboardType="phone-pad"
               />
+              {!!registerErrors.phoneNumber && <Text style={s.fieldError}>{registerErrors.phoneNumber}</Text>}
 
               <View style={s.rowGap}>
                 <View style={s.flexOne}>
@@ -1015,6 +1136,7 @@ export default function App() {
                       {register.dateOfBirth || "Select date of birth"}
                     </Text>
                   </Pressable>
+                  {!!registerErrors.dateOfBirth && <Text style={s.fieldError}>{registerErrors.dateOfBirth}</Text>}
                 </View>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Gender</Text>
@@ -1023,12 +1145,16 @@ export default function App() {
                       <Pressable
                         key={g}
                         style={[s.genderChip, register.gender === g && s.genderChipOn]}
-                        onPress={() => setRegister((p) => ({ ...p, gender: g }))}
+                        onPress={() => {
+                          setRegister((p) => ({ ...p, gender: g }));
+                          setRegisterErrors((p) => ({ ...p, gender: undefined }));
+                        }}
                       >
                         <Text style={[s.genderChipText, register.gender === g && s.genderChipTextOn]}>{g}</Text>
                       </Pressable>
                     ))}
                   </View>
+                  {!!registerErrors.gender && <Text style={s.fieldError}>{registerErrors.gender}</Text>}
                 </View>
               </View>
               {showRegisterDobPicker && (
@@ -1046,7 +1172,10 @@ export default function App() {
                 icon="lock-closed-outline"
                 placeholder="Create a password"
                 value={register.password}
-                onChangeText={(v) => setRegister((p) => ({ ...p, password: v }))}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, password: v }));
+                  setRegisterErrors((p) => ({ ...p, password: undefined }));
+                }}
                 secureTextEntry={!showRegPassword}
                 right={
                   <Pressable onPress={() => setShowRegPassword((v) => !v)}>
@@ -1058,12 +1187,16 @@ export default function App() {
                   </Pressable>
                 }
               />
+              {!!registerErrors.password && <Text style={s.fieldError}>{registerErrors.password}</Text>}
               <Text style={s.formLabel}>Confirm Password</Text>
               <Field
                 icon="lock-closed-outline"
                 placeholder="Confirm your password"
                 value={register.confirmPassword}
-                onChangeText={(v) => setRegister((p) => ({ ...p, confirmPassword: v }))}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, confirmPassword: v }));
+                  setRegisterErrors((p) => ({ ...p, confirmPassword: undefined }));
+                }}
                 secureTextEntry={!showRegConfirm}
                 right={
                   <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
@@ -1075,8 +1208,9 @@ export default function App() {
                   </Pressable>
                 }
               />
+              {!!registerErrors.confirmPassword && <Text style={s.fieldError}>{registerErrors.confirmPassword}</Text>}
 
-              <Pressable style={s.primaryBtn} onPress={registerUser}>
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={registerUser}>
                 <Text style={s.primaryBtnText}>{busy ? "Creating..." : "Create Account"}</Text>
               </Pressable>
               <Text style={s.centerText}>
@@ -1133,9 +1267,25 @@ export default function App() {
             </View>
           )}
 
-          {!!status && <Text style={[s.statusBadge, statusStyle]}>{status}</Text>}
           <Text style={s.apiHint}>API: {API}</Text>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        <View pointerEvents="box-none" style={s.toastWrap}>
+          {toasts.map((toast) => (
+            <Pressable
+              key={toast.id}
+              onPress={() => dismissToast(toast.id)}
+              style={[
+                s.toastCard,
+                toast.tone === "success" && s.toastSuccess,
+                toast.tone === "error" && s.toastError,
+                toast.tone === "info" && s.toastInfo,
+              ]}
+            >
+              <Text style={s.toastText}>{toast.message}</Text>
+            </Pressable>
+          ))}
+        </View>
       </SafeAreaView>
     );
   }
@@ -1469,6 +1619,7 @@ export default function App() {
                 <View key={contact.id} style={s.contactCard}>
                   <Text style={s.contactName}>{contact.name}</Text>
                   <Text style={s.contactPhone}>{contact.phoneNumber}</Text>
+                  <Text style={s.contactPhone}>{contact.email || "No email set"}</Text>
                   <Text style={s.contactMeta}>{contact.relationship || "Relationship not set"}{contact.isPrimary ? "  |  Primary" : ""}</Text>
                   <View style={s.contactActions}>
                     <Text style={s.contactAction} onPress={() => openContactEditor(contact)}>Edit</Text>
@@ -1482,7 +1633,8 @@ export default function App() {
               <View style={s.contactFormCard}>
                 <Text style={s.sectionCardTitle}>{contactForm.id ? "Edit Contact" : "Add Contact"}</Text>
                 <TextInput style={s.inlineInput} placeholder="Name" value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} />
-                <TextInput style={s.inlineInput} placeholder="Phone Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} />
+                <TextInput style={s.inlineInput} placeholder="Contact Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} keyboardType="phone-pad" />
+                <TextInput style={s.inlineInput} placeholder="Email Address" value={contactForm.email} onChangeText={(v) => setContactForm((p) => ({ ...p, email: v }))} keyboardType="email-address" autoCapitalize="none" />
                 <TextInput style={s.inlineInput} placeholder="Relationship" value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} />
                 <Pressable style={[s.primaryToggle, contactForm.isPrimary && s.primaryToggleOn]} onPress={() => setContactForm((p) => ({ ...p, isPrimary: !p.isPrimary }))}>
                   <Text style={s.primaryToggleText}>{contactForm.isPrimary ? "Primary selected" : "Set as primary"}</Text>
@@ -1497,7 +1649,6 @@ export default function App() {
           </>
         )}
 
-        {!!status && <Text style={[s.statusBadge, statusStyle]}>{status}</Text>}
       </ScrollView>
 
       <View style={s.bottomBar}>
@@ -1547,6 +1698,22 @@ export default function App() {
           </View>
         </View>
       )}
+      <View pointerEvents="box-none" style={s.toastWrap}>
+        {toasts.map((toast) => (
+          <Pressable
+            key={toast.id}
+            onPress={() => dismissToast(toast.id)}
+            style={[
+              s.toastCard,
+              toast.tone === "success" && s.toastSuccess,
+              toast.tone === "error" && s.toastError,
+              toast.tone === "info" && s.toastInfo,
+            ]}
+          >
+            <Text style={s.toastText}>{toast.message}</Text>
+          </Pressable>
+        ))}
+      </View>
     </SafeAreaView>
   );
 }
@@ -1571,7 +1738,7 @@ const s = StyleSheet.create({
     elevation: 4,
   },
 
-  authWrap: { padding: 22, gap: 14, paddingBottom: 60 },
+  authWrap: { padding: 22, gap: 14, paddingBottom: 140 },
   logoBlock: { alignItems: "center", marginBottom: 8, gap: 10 },
   logoTitle: { fontSize: 52, fontWeight: "800", color: "#111827" },
   logoSub: { fontSize: 16, color: "#6b7280" },
@@ -1622,7 +1789,9 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginTop: 12,
   },
+  primaryBtnDisabled: { opacity: 0.65 },
   primaryBtnText: { color: "#fff", fontSize: 30 / 2, fontWeight: "800" },
+  fieldError: { color: "#b91c1c", fontSize: 12, marginTop: 4, marginLeft: 2 },
   subtleBtn: {
     minHeight: 48,
     borderRadius: 14,
@@ -1655,17 +1824,26 @@ const s = StyleSheet.create({
   publicLine: { color: "#374151" },
   snapshotStamp: { color: "#6b7280", fontSize: 12, marginTop: 8 },
 
-  statusBadge: {
+  apiHint: { color: "#9ca3af", textAlign: "center", fontSize: 12, marginTop: 8 },
+
+  toastWrap: {
+    position: "absolute",
+    top: 10,
+    left: 12,
+    right: 12,
+    zIndex: 5000,
+    gap: 8,
+  },
+  toastCard: {
     borderRadius: 12,
+    borderWidth: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    marginTop: 12,
-    fontWeight: "700",
   },
-  statusSuccess: { backgroundColor: "#dcfce7", color: "#166534" },
-  statusError: { backgroundColor: "#fee2e2", color: "#991b1b" },
-  statusInfo: { backgroundColor: "#e0f2fe", color: "#0c4a6e" },
-  apiHint: { color: "#9ca3af", textAlign: "center", fontSize: 12, marginTop: 8 },
+  toastText: { fontWeight: "700", fontSize: 13 },
+  toastSuccess: { backgroundColor: "#dcfce7", borderColor: "#86efac" },
+  toastError: { backgroundColor: "#fee2e2", borderColor: "#fca5a5" },
+  toastInfo: { backgroundColor: "#e0f2fe", borderColor: "#7dd3fc" },
 
   page: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 140, gap: 10 },
   onlineText: { color: "#0f766e", fontWeight: "700", textAlign: "center" },

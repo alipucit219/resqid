@@ -39,6 +39,7 @@ const EmergencyContactsPage = () => {
     userId: '',
     name: '',
     phoneNumber: '',
+    email: '',
     relationship: '',
     isPrimary: false
   })
@@ -82,6 +83,12 @@ const EmergencyContactsPage = () => {
         headerName: 'Phone'
       },
       {
+        flex: 0.2,
+        minWidth: 200,
+        field: 'email',
+        headerName: 'Email'
+      },
+      {
         flex: 0.15,
         minWidth: 140,
         field: 'relationship',
@@ -111,6 +118,7 @@ const EmergencyContactsPage = () => {
                   userId: row?.user?.id || '',
                   name: row?.name || '',
                   phoneNumber: row?.phoneNumber || '',
+                  email: row?.email || '',
                   relationship: row?.relationship || '',
                   isPrimary: Boolean(row?.isPrimary)
                 })
@@ -160,6 +168,7 @@ const EmergencyContactsPage = () => {
     const payload = {
       name: form.name,
       phoneNumber: form.phoneNumber,
+      email: form.email || undefined,
       relationship: form.relationship || undefined,
       isPrimary: Boolean(form.isPrimary)
     }
@@ -173,7 +182,7 @@ const EmergencyContactsPage = () => {
       toast.success(activeRow?.id ? 'Contact updated' : 'Contact created')
       setOpenForm(false)
       setActiveRow(null)
-      setForm({ userId: '', name: '', phoneNumber: '', relationship: '', isPrimary: false })
+      setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
       dispatch(
         fetchEmergencyContacts({
           ...DEFAULT_EMERGENCY_CONTACT_PARAMS,
@@ -197,7 +206,7 @@ const EmergencyContactsPage = () => {
             variant='contained'
             onClick={() => {
               setActiveRow(null)
-              setForm({ userId: '', name: '', phoneNumber: '', relationship: '', isPrimary: false })
+              setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
               setOpenForm(true)
             }}
           >
@@ -256,6 +265,11 @@ const EmergencyContactsPage = () => {
             label='Phone Number'
             value={form.phoneNumber}
             onChange={e => setForm({ ...form, phoneNumber: e.target.value })}
+          />
+          <TextField
+            label='Email'
+            value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
           />
           <TextField
             label='Relationship'

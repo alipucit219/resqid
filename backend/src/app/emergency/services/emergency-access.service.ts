@@ -242,6 +242,7 @@ export class EmergencyAccessService {
       emergencyContacts: contacts.map((contact) => ({
         name: contact.name,
         phoneNumber: contact.phoneNumber,
+        email: contact.email || null,
         relationship: contact.relationship || null,
         isPrimary: Boolean(contact.isPrimary),
       })),

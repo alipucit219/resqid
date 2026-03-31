@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsBoolean, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsEmail, IsOptional, IsString } from "class-validator";
 
 export class UpdateEmergencyContactDto {
   @ApiPropertyOptional()
@@ -14,6 +14,11 @@ export class UpdateEmergencyContactDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   relationship?: string;
 
@@ -22,4 +27,3 @@ export class UpdateEmergencyContactDto {
   @IsBoolean()
   isPrimary?: boolean;
 }
-

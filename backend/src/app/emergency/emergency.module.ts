@@ -16,9 +16,11 @@ import { SmsGatewayService } from "./services/sms-gateway.service";
 import { MeEmergencyController } from "./controllers/me-emergency.controller";
 import { AdminEmergencyController } from "./controllers/admin-emergency.controller";
 import { PublicEmergencyController } from "./controllers/public-emergency.controller";
+import { SharedModule } from "src/shared/shared.module";
 
 @Module({
   imports: [
+    SharedModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: MedicalProfile.name, schema: MedicalProfileSchema },
@@ -44,4 +46,3 @@ import { PublicEmergencyController } from "./controllers/public-emergency.contro
   ],
 })
 export class EmergencyModule {}
-

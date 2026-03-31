@@ -16,6 +16,9 @@ export class EmergencyContact {
   @Prop({ required: true, trim: true })
   phoneNumber: string;
 
+  @Prop({ default: null, trim: true, lowercase: true })
+  email?: string | null;
+
   @Prop({ default: null })
   relationship?: string | null;
 
@@ -39,4 +42,3 @@ EmergencyContactSchema.set("toJSON", {
     return ret;
   },
 });
-

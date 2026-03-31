@@ -56,6 +56,11 @@ export class EmergencyContactService {
       data.phoneNumber = payload.phoneNumber.trim();
     }
 
+    if (typeof payload.email === "string") {
+      const email = payload.email.trim().toLowerCase();
+      data.email = email || undefined;
+    }
+
     if (typeof payload.relationship === "string") {
       const relationship = payload.relationship.trim();
       data.relationship = relationship || undefined;
@@ -178,6 +183,7 @@ export class EmergencyContactService {
         },
         { name: { $regex: query.search, $options: "i" } },
         { phoneNumber: { $regex: query.search, $options: "i" } },
+        { email: { $regex: query.search, $options: "i" } },
       ];
     }
 

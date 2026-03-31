@@ -6,6 +6,7 @@ import {
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { User, UserDocument } from "src/app/user/user.entity";
+import { EmailService } from "src/shared/services";
 import {
   CreatePanicAlertDto,
   EmergencyAdminListQueryDto,
@@ -38,6 +39,7 @@ export class PanicAlertService {
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     private readonly smsGatewayService: SmsGatewayService,
+    private readonly emailService: EmailService,
   ) {}
 
   private toObjectId(id: string) {
@@ -80,6 +82,38 @@ export class PanicAlertService {
     }
 
     return PanicAlertStatus.FAILED;
+  }
+
+  private async sendEmailAlert(contact: EmergencyContactDocument, message: string) {
+    if (!contact.email) return null;
+
+    try {
+      const result = await this.emailService.sendMail({
+        to: contact.email,
+        subject: "Emergency Alert - ResQID",
+        text: message,
+      });
+
+      if (result.delivered) {
+        return {
+          status: PanicAlertDispatchStatus.SENT,
+          providerResponse: "Email sent",
+          errorMessage: null,
+        };
+      }
+
+      return {
+        status: PanicAlertDispatchStatus.LOGGED_FALLBACK,
+        providerResponse: "Email fallback logged",
+        errorMessage: null,
+      };
+    } catch (error) {
+      return {
+        status: PanicAlertDispatchStatus.FAILED,
+        providerResponse: null,
+        errorMessage: error instanceof Error ? error.message : "Email dispatch failed.",
+      };
+    }
   }
 
   async createForUser(userId: string, payload: CreatePanicAlertDto) {
@@ -133,6 +167,19 @@ export class PanicAlertService {
         providerResponse: result.providerResponse || null,
         errorMessage: result.errorMessage || null,
       });
+
+      const emailResult = await this.sendEmailAlert(contact, composedMessage);
+      if (emailResult) {
+        statuses.push(emailResult.status);
+        dispatchesPayload.push({
+          panicAlertId: this.toObjectId(panicAlert.id),
+          contactName: `${contact.name} (email)`,
+          phoneNumber: contact.email!,
+          status: emailResult.status,
+          providerResponse: emailResult.providerResponse,
+          errorMessage: emailResult.errorMessage,
+        });
+      }
     }
 
     if (dispatchesPayload.length > 0) {
