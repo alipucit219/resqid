@@ -1,6 +1,5 @@
 // ** MUI Imports
 import Box from '@mui/material/Box'
-import MuiLink from '@mui/material/Link'
 import Typography from '@mui/material/Typography'
 
 const FooterContent = () => {
@@ -11,10 +10,7 @@ const FooterContent = () => {
         <Box component='span' sx={{ color: 'error.main' }}>
           ❤️
         </Box>
-        {` by `}
-        <MuiLink target='_blank' href='https://www.facebook.com/mohammad.shehroz1'>
-          Muhammad Shehroz
-        </MuiLink>
+        {` by RESQID Team`}
       </Typography>
       {/* {hidden ? null : (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', '& :not(:last-child)': { mr: 4 } }}>
