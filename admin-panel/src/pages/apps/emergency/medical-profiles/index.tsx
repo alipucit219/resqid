@@ -33,6 +33,9 @@ const MedicalProfilesPage = () => {
   const [activeRow, setActiveRow] = useState<any>(null)
   const [form, setForm] = useState<any>({
     bloodGroup: '',
+    cnic: '',
+    age: '',
+    address: '',
     allergies: '',
     chronicConditions: '',
     medications: '',
@@ -73,6 +76,12 @@ const MedicalProfilesPage = () => {
         headerName: 'Blood Group'
       },
       {
+        flex: 0.15,
+        minWidth: 160,
+        field: 'cnic',
+        headerName: 'CNIC'
+      },
+      {
         flex: 0.32,
         minWidth: 260,
         field: 'allergies',
@@ -100,6 +109,9 @@ const MedicalProfilesPage = () => {
               setActiveRow(row)
               setForm({
                 bloodGroup: row?.bloodGroup || '',
+                cnic: row?.cnic || '',
+                age: row?.age !== undefined && row?.age !== null ? String(row.age) : '',
+                address: row?.address || '',
                 allergies: (row?.allergies || []).join(', '),
                 chronicConditions: (row?.chronicConditions || []).join(', '),
                 medications: (row?.medications || []).join(', '),
@@ -119,8 +131,20 @@ const MedicalProfilesPage = () => {
 
   const handleSave = async () => {
     if (!activeRow?.user?.id) return
+    if (form.cnic && !/^\d{5}-\d{7}-\d{1}$/.test(form.cnic.trim())) {
+      toast.error('CNIC format must be 12345-1234567-1')
+      return
+    }
+    const age = form.age ? Number(form.age) : undefined
+    if (age !== undefined && (!Number.isInteger(age) || age < 1 || age > 120)) {
+      toast.error('Age must be a whole number between 1 and 120')
+      return
+    }
     const payload = {
       bloodGroup: form.bloodGroup || undefined,
+      cnic: form.cnic || undefined,
+      age,
+      address: form.address || undefined,
       allergies: form.allergies
         .split(',')
         .map((x: string) => x.trim())
@@ -200,6 +224,9 @@ const MedicalProfilesPage = () => {
         <DialogTitle>Edit Medical Profile</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 3, mt: 1 }}>
           <TextField label='Blood Group' value={form.bloodGroup} onChange={e => setForm({ ...form, bloodGroup: e.target.value })} />
+          <TextField label='CNIC' value={form.cnic} onChange={e => setForm({ ...form, cnic: e.target.value })} />
+          <TextField label='Age' value={form.age} onChange={e => setForm({ ...form, age: e.target.value.replace(/[^0-9]/g, '') })} />
+          <TextField label='Address' value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
           <TextField
             label='Allergies (comma separated)'
             value={form.allergies}

@@ -25,6 +25,8 @@ import {
   updateEmergencyContact
 } from 'src/store/apps/emergencyContacts'
 
+const PHONE_REGEX = /^\+?[0-9()\-\s]{7,20}$/
+
 const EmergencyContactsPage = () => {
   const dispatch = useDispatch<AppDispatch>()
   const emergencyContacts = useSelector((state: RootState) => state.emergencyContacts)
@@ -136,6 +138,11 @@ const EmergencyContactsPage = () => {
                 const res = await dispatch(deleteEmergencyContact({ userId: row.user.id, contactId: row.id }))
                 if (res.type.includes('fulfilled')) {
                   toast.success('Contact deleted')
+                  if (activeRow?.id === row.id) {
+                    setOpenForm(false)
+                    setActiveRow(null)
+                    setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
+                  }
                   dispatch(
                     fetchEmergencyContacts({
                       ...DEFAULT_EMERGENCY_CONTACT_PARAMS,
@@ -156,7 +163,7 @@ const EmergencyContactsPage = () => {
         )
       }
     ],
-    [dispatch, page, pageSize, search, userIdFilter]
+    [dispatch, page, pageSize, search, userIdFilter, activeRow]
   )
 
   const handleSubmit = async () => {
@@ -171,6 +178,23 @@ const EmergencyContactsPage = () => {
       email: form.email || undefined,
       relationship: form.relationship || undefined,
       isPrimary: Boolean(form.isPrimary)
+    }
+
+    if (!payload.name?.trim()) {
+      toast.error('Contact name is required')
+      return
+    }
+    if (!payload.phoneNumber?.trim()) {
+      toast.error('Contact number is required')
+      return
+    }
+    if (!PHONE_REGEX.test(payload.phoneNumber.trim())) {
+      toast.error('Contact number format is invalid')
+      return
+    }
+    if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+      toast.error('Email format is invalid')
+      return
     }
 
     const res =

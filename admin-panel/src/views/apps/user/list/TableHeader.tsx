@@ -27,17 +27,17 @@ const TableHeader = (props: TableHeaderProps) => {
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
-        justifyContent: 'flex-end'
+        justifyContent: 'flex-start'
       }}
     >
       {/* <Button color='secondary' variant='outlined' startIcon={<Icon icon='tabler:upload' />}>
         Export
       </Button> */}
-      <Box sx={{ rowGap: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ rowGap: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', width: '100%' }}>
         <TextField
           size='small'
           value={value}
-          sx={{ mr: 4 }}
+          sx={{ minWidth: { xs: '100%', sm: 260 }, mr: { xs: 0, sm: 4 } }}
           placeholder='Search User'
           onChange={e => handleFilter(e.target.value)}
         />

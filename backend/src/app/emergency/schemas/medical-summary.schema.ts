@@ -17,6 +17,9 @@ export class MedicalSummary {
   doctorName?: string | null;
 
   @Prop({ default: null })
+  diseaseStartingYear?: number | null;
+
+  @Prop({ default: null })
   treatmentDuration?: string | null;
 
   @Prop({ default: null })
@@ -24,6 +27,9 @@ export class MedicalSummary {
 
   @Prop({ type: [String], default: [] })
   currentMedications: string[];
+
+  @Prop({ type: [String], default: [] })
+  checkupFiles: string[];
 
   @Prop({ default: null })
   notes?: string | null;

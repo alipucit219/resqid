@@ -28,14 +28,15 @@ const MedicalSummariesPage = () => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
   const [search, setSearch] = useState('')
-  const [userIdFilter, setUserIdFilter] = useState('')
   const [openEdit, setOpenEdit] = useState(false)
   const [activeRow, setActiveRow] = useState<any>(null)
   const [form, setForm] = useState<any>({
     hospitalName: '',
     doctorName: '',
+    diseaseStartingYear: '',
     treatmentDuration: '',
     treatmentStatus: '',
+    checkupFiles: '',
     currentMedications: '',
     notes: ''
   })
@@ -46,11 +47,10 @@ const MedicalSummariesPage = () => {
         ...DEFAULT_MEDICAL_SUMMARY_PARAMS,
         page,
         limit: pageSize,
-        search,
-        userId: userIdFilter || undefined
+        search
       })
     )
-  }, [dispatch, page, pageSize, search, userIdFilter])
+  }, [dispatch, page, pageSize, search])
 
   const columns = useMemo(
     () => [
@@ -79,6 +79,12 @@ const MedicalSummariesPage = () => {
         headerName: 'Doctor'
       },
       {
+        flex: 0.12,
+        minWidth: 120,
+        field: 'diseaseStartingYear',
+        headerName: 'Disease Since'
+      },
+      {
         flex: 0.2,
         minWidth: 150,
         field: 'treatmentStatus',
@@ -99,8 +105,13 @@ const MedicalSummariesPage = () => {
               setForm({
                 hospitalName: row?.hospitalName || '',
                 doctorName: row?.doctorName || '',
+                diseaseStartingYear:
+                  row?.diseaseStartingYear !== undefined && row?.diseaseStartingYear !== null
+                    ? String(row.diseaseStartingYear)
+                    : '',
                 treatmentDuration: row?.treatmentDuration || '',
                 treatmentStatus: row?.treatmentStatus || '',
+                checkupFiles: (row?.checkupFiles || []).join(', '),
                 currentMedications: (row?.currentMedications || []).join(', '),
                 notes: row?.notes || ''
               })
@@ -117,11 +128,24 @@ const MedicalSummariesPage = () => {
 
   const handleSave = async () => {
     if (!activeRow?.user?.id) return
+    const year = form.diseaseStartingYear ? Number(form.diseaseStartingYear) : undefined
+    if (
+      year !== undefined &&
+      (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear())
+    ) {
+      toast.error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}`)
+      return
+    }
     const payload = {
       hospitalName: form.hospitalName || undefined,
       doctorName: form.doctorName || undefined,
+      diseaseStartingYear: year,
       treatmentDuration: form.treatmentDuration || undefined,
       treatmentStatus: form.treatmentStatus || undefined,
+      checkupFiles: form.checkupFiles
+        .split(',')
+        .map((x: string) => x.trim())
+        .filter(Boolean),
       currentMedications: form.currentMedications
         .split(',')
         .map((x: string) => x.trim())
@@ -138,8 +162,7 @@ const MedicalSummariesPage = () => {
           ...DEFAULT_MEDICAL_SUMMARY_PARAMS,
           page,
           limit: pageSize,
-          search,
-          userId: userIdFilter || undefined
+          search
         })
       )
       return
@@ -151,20 +174,13 @@ const MedicalSummariesPage = () => {
     <Card>
       <CardHeader title='Medical Summaries' />
       <CardContent>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 320px' }, gap: 3, mb: 4 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 3, mb: 4 }}>
           <TextField
             fullWidth
             size='small'
             label='Search by user'
             value={search}
             onChange={e => setSearch(e.target.value)}
-          />
-          <TextField
-            fullWidth
-            size='small'
-            label='Filter by User ID'
-            value={userIdFilter}
-            onChange={e => setUserIdFilter(e.target.value)}
           />
         </Box>
 
@@ -191,11 +207,21 @@ const MedicalSummariesPage = () => {
           <TextField label='Hospital Name' value={form.hospitalName} onChange={e => setForm({ ...form, hospitalName: e.target.value })} />
           <TextField label='Doctor Name' value={form.doctorName} onChange={e => setForm({ ...form, doctorName: e.target.value })} />
           <TextField
+            label='Disease Starting Year'
+            value={form.diseaseStartingYear}
+            onChange={e => setForm({ ...form, diseaseStartingYear: e.target.value.replace(/[^0-9]/g, '') })}
+          />
+          <TextField
             label='Treatment Duration'
             value={form.treatmentDuration}
             onChange={e => setForm({ ...form, treatmentDuration: e.target.value })}
           />
           <TextField label='Treatment Status' value={form.treatmentStatus} onChange={e => setForm({ ...form, treatmentStatus: e.target.value })} />
+          <TextField
+            label='Checkup Files (comma separated URLs or names)'
+            value={form.checkupFiles}
+            onChange={e => setForm({ ...form, checkupFiles: e.target.value })}
+          />
           <TextField
             label='Current Medications (comma separated)'
             value={form.currentMedications}

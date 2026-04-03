@@ -275,7 +275,7 @@ const Register = () => {
                             onMouseDown={e => e.preventDefault()}
                             onClick={() => setShowPassword(!showPassword)}
                           >
-                            <Icon icon={showPassword ? 'tabler:eye' : 'tabler:eye-off'} fontSize={20} />
+                            <Icon icon={showPassword ? 'tabler:eye-off' : 'tabler:eye'} fontSize={20} />
                           </IconButton>
                         </InputAdornment>
                       }
