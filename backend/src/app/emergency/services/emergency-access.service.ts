@@ -220,6 +220,9 @@ export class EmergencyAccessService {
       medicalProfile: profile
         ? {
             bloodGroup: profile.bloodGroup || null,
+            cnic: profile.cnic || null,
+            age: profile.age ?? null,
+            address: profile.address || null,
             allergies: profile.allergies || [],
             chronicConditions: profile.chronicConditions || [],
             medications: profile.medications || [],
@@ -233,8 +236,10 @@ export class EmergencyAccessService {
         ? {
             hospitalName: summary.hospitalName || null,
             doctorName: summary.doctorName || null,
+            diseaseStartingYear: summary.diseaseStartingYear ?? null,
             treatmentDuration: summary.treatmentDuration || null,
             treatmentStatus: summary.treatmentStatus || null,
+            checkupFiles: summary.checkupFiles || [],
             currentMedications: summary.currentMedications || [],
             notes: summary.notes || null,
           }

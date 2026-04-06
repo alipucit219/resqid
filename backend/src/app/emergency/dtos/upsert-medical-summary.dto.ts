@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsOptional, IsString } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class UpsertMedicalSummaryDto {
   @ApiPropertyOptional()
@@ -11,6 +11,13 @@ export class UpsertMedicalSummaryDto {
   @IsOptional()
   @IsString()
   doctorName?: string;
+
+  @ApiPropertyOptional({ minimum: 1900 })
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(new Date().getFullYear())
+  diseaseStartingYear?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -27,6 +34,12 @@ export class UpsertMedicalSummaryDto {
   @IsArray()
   @IsString({ each: true })
   currentMedications?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  checkupFiles?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

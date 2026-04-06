@@ -172,7 +172,7 @@ const LoginPage = () => {
                                   onMouseDown={e => e.preventDefault()}
                                   aria-label='toggle password visibility'
                                 >
-                                  <Icon icon={state?.showPassword ? 'tabler:eye' : 'tabler:eye-off'} />
+                                  <Icon icon={state?.showPassword ? 'tabler:eye-off' : 'tabler:eye'} />
                                 </IconButton>
                               </InputAdornment>
                             )

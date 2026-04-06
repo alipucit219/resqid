@@ -13,6 +13,15 @@ export class MedicalProfile {
   @Prop({ default: null })
   bloodGroup?: string | null;
 
+  @Prop({ default: null })
+  cnic?: string | null;
+
+  @Prop({ default: null })
+  age?: number | null;
+
+  @Prop({ default: null })
+  address?: string | null;
+
   @Prop({ type: [String], default: [] })
   allergies: string[];
 

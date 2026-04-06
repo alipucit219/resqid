@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -22,7 +23,7 @@ import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-type AuthScreen = "login" | "register" | "public";
+type AuthScreen = "login" | "register" | "forgot" | "public";
 type Tab = "home" | "profile" | "qr" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
@@ -45,6 +46,9 @@ type User = {
 type Contact = { id: string; name: string; phoneNumber: string; email?: string | null; relationship?: string | null; isPrimary?: boolean };
 type Profile = {
   bloodGroup: string;
+  cnic: string;
+  age: string;
+  address: string;
   allergies: string[];
   chronicConditions: string[];
   medications: string[];
@@ -55,8 +59,10 @@ type Profile = {
 type Summary = {
   hospitalName: string;
   doctorName: string;
+  diseaseStartingYear: string;
   treatmentDuration: string;
   treatmentStatus: string;
+  checkupFiles: string[];
   currentMedications: string[];
   notes: string;
 };
@@ -131,6 +137,9 @@ const EMPTY_REGISTER = {
 };
 const EMPTY_PROFILE: Profile = {
   bloodGroup: "",
+  cnic: "",
+  age: "",
+  address: "",
   allergies: [],
   chronicConditions: [],
   medications: [],
@@ -141,11 +150,16 @@ const EMPTY_PROFILE: Profile = {
 const EMPTY_SUMMARY: Summary = {
   hospitalName: "",
   doctorName: "",
+  diseaseStartingYear: "",
   treatmentDuration: "",
   treatmentStatus: "",
+  checkupFiles: [],
   currentMedications: [],
   notes: "",
 };
+
+const PHONE_REGEX = /^\+?[0-9()\-\s]{7,20}$/;
+const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
 
 const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x || "").trim()).filter(Boolean) : []);
 const asDate = (v: unknown) => {
@@ -171,6 +185,20 @@ const netErr = (e: unknown) =>
   /network request failed|fetch failed|failed to fetch|abort|timeout|timed out/i.test(errMsg(e));
 const labelCount = (count: number, singular: string, plural?: string) =>
   `${count} ${count === 1 ? singular : plural || `${singular}s`}`;
+const isValidPhoneNumber = (value: string) => PHONE_REGEX.test(String(value || "").trim());
+const isValidCnic = (value: string) => CNIC_REGEX.test(String(value || "").trim());
+const toNumericYear = (value: string) => {
+  const year = Number(value);
+  if (!Number.isInteger(year)) return null;
+  if (year < 1900 || year > new Date().getFullYear()) return null;
+  return year;
+};
+const toNumericAge = (value: string) => {
+  const age = Number(value);
+  if (!Number.isInteger(age)) return null;
+  if (age < 1 || age > 120) return null;
+  return age;
+};
 const toContactBody = (payload: any) => ({
   name: String(payload?.name || "").trim(),
   phoneNumber: String(payload?.phoneNumber || "").trim(),
@@ -330,6 +358,8 @@ export default function App() {
 
   const [login, setLogin] = useState({ email: "", password: "" });
   const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotEmailError, setForgotEmailError] = useState("");
   const [register, setRegister] = useState({ ...EMPTY_REGISTER });
   const [registerErrors, setRegisterErrors] = useState<AuthFieldErrors>({});
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -347,6 +377,7 @@ export default function App() {
   const [aDraft, setADraft] = useState("");
   const [cDraft, setCDraft] = useState("");
   const [mDraft, setMDraft] = useState("");
+  const [checkupFileDraft, setCheckupFileDraft] = useState("");
   const [smDraft, setSmDraft] = useState("");
 
   const [contactForm, setContactForm] = useState({
@@ -368,6 +399,13 @@ export default function App() {
   const [showScanner, setShowScanner] = useState(false);
   const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [isLockEnabled, setIsLockEnabled] = useState(false);
+  const [lockPin, setLockPin] = useState("");
+  const [lockPinDraft, setLockPinDraft] = useState("");
+  const [lockPinConfirm, setLockPinConfirm] = useState("");
+  const [unlockPin, setUnlockPin] = useState("");
+  const [lockHint, setLockHint] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
 
   const syncing = useRef(false);
   const toastTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
@@ -452,6 +490,9 @@ export default function App() {
     user: { fullName: snap.user.fullName },
     medicalProfile: {
       bloodGroup: snap.profile.bloodGroup || null,
+      cnic: snap.profile.cnic || null,
+      age: snap.profile.age ? Number(snap.profile.age) : null,
+      address: snap.profile.address || null,
       allergies: snap.profile.allergies,
       chronicConditions: snap.profile.chronicConditions,
       medications: snap.profile.medications,
@@ -460,7 +501,9 @@ export default function App() {
     medicalSummary: {
       hospitalName: snap.summary.hospitalName || null,
       doctorName: snap.summary.doctorName || null,
+      diseaseStartingYear: snap.summary.diseaseStartingYear ? Number(snap.summary.diseaseStartingYear) : null,
       treatmentStatus: snap.summary.treatmentStatus || null,
+      checkupFiles: snap.summary.checkupFiles || [],
       currentMedications: snap.summary.currentMedications,
     },
     emergencyContacts: snap.contacts.map((c) => ({
@@ -484,6 +527,9 @@ export default function App() {
       profileRes
         ? {
             bloodGroup: profileRes.bloodGroup || "",
+            cnic: profileRes.cnic || "",
+            age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
+            address: profileRes.address || "",
             allergies: arr(profileRes.allergies),
             chronicConditions: arr(profileRes.chronicConditions),
             medications: arr(profileRes.medications),
@@ -503,8 +549,13 @@ export default function App() {
         ? {
             hospitalName: summaryRes.hospitalName || "",
             doctorName: summaryRes.doctorName || "",
+            diseaseStartingYear:
+              summaryRes.diseaseStartingYear !== undefined && summaryRes.diseaseStartingYear !== null
+                ? String(summaryRes.diseaseStartingYear)
+                : "",
             treatmentDuration: summaryRes.treatmentDuration || "",
             treatmentStatus: summaryRes.treatmentStatus || "",
+            checkupFiles: arr(summaryRes.checkupFiles),
             currentMedications: arr(summaryRes.currentMedications),
             notes: summaryRes.notes || "",
           }
@@ -594,9 +645,14 @@ export default function App() {
       const cachedSnapshot = await getKV<Snapshot>(localDb, "snapshot");
       const cachedToken = await getKV<string>(localDb, "auth_token");
       const cachedUser = await getKV<User>(localDb, "auth_user");
+      const cachedLockSettings = await getKV<{ isLockEnabled: boolean; lockPin: string }>(localDb, "lock_settings");
       if (!active) return;
 
       setSnapshot(cachedSnapshot);
+      if (cachedLockSettings) {
+        setIsLockEnabled(Boolean(cachedLockSettings.isLockEnabled));
+        setLockPin(String(cachedLockSettings.lockPin || ""));
+      }
       if (cachedToken && cachedUser) {
         setToken(cachedToken);
         setUser(cachedUser);
@@ -614,6 +670,12 @@ export default function App() {
     if (!ready || !token || !user) return;
     void hydrate(token, user, true);
   }, [ready, token, user?.id]);
+
+  useEffect(() => {
+    if (ready && token && user && isLockEnabled && lockPin) {
+      setIsLocked(true);
+    }
+  }, [ready, token, user, isLockEnabled, lockPin]);
 
   useEffect(
     () => () => {
@@ -653,6 +715,22 @@ export default function App() {
     setSnapshot(snap);
   }, [db, user, profile, summary, contacts, qr]);
 
+  useEffect(() => {
+    if (!db) return;
+    void setKV(db, "lock_settings", { isLockEnabled, lockPin });
+  }, [db, isLockEnabled, lockPin]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active" && isLockEnabled && Boolean(token) && Boolean(user) && lockPin) {
+        setIsLocked(true);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [isLockEnabled, token, user, lockPin]);
+
   const loginUser = () =>
     run(async () => {
       if (!isOnline) throw new Error("No internet. Use Offline Emergency View.");
@@ -672,6 +750,9 @@ export default function App() {
       setUser(response.user);
       setLoginErrors({});
       setTab("home");
+      if (isLockEnabled && lockPin) {
+        setIsLocked(true);
+      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Signed in.");
     });
@@ -684,6 +765,7 @@ export default function App() {
       if (!register.email.trim()) nextErrors.email = "Email is required.";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(register.email.trim())) nextErrors.email = "Please enter a valid email.";
       if (!register.phoneNumber.trim()) nextErrors.phoneNumber = "Phone number is required.";
+      else if (!isValidPhoneNumber(register.phoneNumber)) nextErrors.phoneNumber = "Please enter a valid contact number.";
       if (!register.dateOfBirth.trim()) nextErrors.dateOfBirth = "Date of birth is required.";
       if (!register.gender.trim()) nextErrors.gender = "Gender is required.";
       if (!register.password) nextErrors.password = "Password is required.";
@@ -713,13 +795,45 @@ export default function App() {
       setLogin({ email: payload.email, password: payload.password });
       setTab("home");
       resetRegisterForm();
+      if (isLockEnabled && lockPin) {
+        setIsLocked(true);
+      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Account created.");
     });
 
+  const requestPasswordReset = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to request password reset.");
+      const email = forgotEmail.trim().toLowerCase();
+      if (!email) {
+        setForgotEmailError("Email is required.");
+        throw new Error("Email is required.");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setForgotEmailError("Please enter a valid email.");
+        throw new Error("Please enter a valid email.");
+      }
+
+      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, { email });
+      setForgotEmailError("");
+      setLogin((prev) => ({ ...prev, email }));
+      setAuthScreen("login");
+      setOk(response.message || "Password reset instructions sent.");
+    });
+
   const saveProfileCore = async () => {
+    if (profile.cnic.trim() && !isValidCnic(profile.cnic)) {
+      throw new Error("CNIC format must be 12345-1234567-1.");
+    }
+    if (profile.age.trim() && toNumericAge(profile.age) === null) {
+      throw new Error("Age must be a whole number between 1 and 120.");
+    }
     const payload = {
       bloodGroup: profile.bloodGroup || undefined,
+      cnic: profile.cnic.trim() || undefined,
+      age: profile.age.trim() ? Number(profile.age.trim()) : undefined,
+      address: profile.address.trim() || undefined,
       allergies: profile.allergies,
       chronicConditions: profile.chronicConditions,
       medications: profile.medications,
@@ -740,11 +854,19 @@ export default function App() {
   };
 
   const saveSummaryCore = async () => {
+    const parsedYear = summary.diseaseStartingYear.trim()
+      ? toNumericYear(summary.diseaseStartingYear.trim())
+      : null;
+    if (summary.diseaseStartingYear.trim() && parsedYear === null) {
+      throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+    }
     const payload = {
       hospitalName: summary.hospitalName || undefined,
       doctorName: summary.doctorName || undefined,
+      diseaseStartingYear: parsedYear ?? undefined,
       treatmentDuration: summary.treatmentDuration || undefined,
       treatmentStatus: summary.treatmentStatus || undefined,
+      checkupFiles: summary.checkupFiles,
       currentMedications: summary.currentMedications,
       notes: summary.notes || undefined,
     };
@@ -770,6 +892,9 @@ export default function App() {
     run(async () => {
       if (!contactForm.name.trim() || !contactForm.phoneNumber.trim()) {
         throw new Error("Name and contact number are required.");
+      }
+      if (!isValidPhoneNumber(contactForm.phoneNumber)) {
+        throw new Error("Contact number format is invalid.");
       }
       if (!contactForm.email.trim()) {
         throw new Error("Email is required.");
@@ -826,6 +951,10 @@ export default function App() {
         onPress: () =>
           run(async () => {
             setContacts((prev) => prev.filter((x) => x.id !== id));
+            if (contactForm.id === id) {
+              setShowContactForm(false);
+              setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
+            }
             if (isOnline && !id.startsWith("local-")) {
               try {
                 await api(`/me/emergency-contacts/${id}`, "DELETE", token);
@@ -973,6 +1102,68 @@ export default function App() {
     }));
   };
 
+  const addCheckupFile = () => {
+    const value = checkupFileDraft.trim();
+    if (!value) return;
+    setSummary((prev) => ({
+      ...prev,
+      checkupFiles: [...prev.checkupFiles, value],
+    }));
+    setCheckupFileDraft("");
+  };
+
+  const removeCheckupFile = (value: string) => {
+    setSummary((prev) => ({
+      ...prev,
+      checkupFiles: prev.checkupFiles.filter((item) => item !== value),
+    }));
+  };
+
+  const enableLock = () => {
+    const pin = lockPinDraft.trim();
+    const confirm = lockPinConfirm.trim();
+    if (!/^\d{4}$/.test(pin)) {
+      setLockHint("PIN must be exactly 4 digits.");
+      return;
+    }
+    if (pin !== confirm) {
+      setLockHint("PIN and confirmation do not match.");
+      return;
+    }
+    setLockPin(pin);
+    setIsLockEnabled(true);
+    setLockPinDraft("");
+    setLockPinConfirm("");
+    setUnlockPin("");
+    setLockHint("2-step lock enabled.");
+    setOk("2-step lock enabled.");
+  };
+
+  const disableLock = () => {
+    setIsLockEnabled(false);
+    setLockPin("");
+    setLockPinDraft("");
+    setLockPinConfirm("");
+    setUnlockPin("");
+    setIsLocked(false);
+    setLockHint("2-step lock disabled.");
+    setInfo("2-step lock disabled.");
+  };
+
+  const unlockApp = () => {
+    if (!isLockEnabled) {
+      setIsLocked(false);
+      return;
+    }
+    if (unlockPin.trim() !== lockPin) {
+      setLockHint("Incorrect PIN. Please try again.");
+      return;
+    }
+    setUnlockPin("");
+    setIsLocked(false);
+    setLockHint("");
+  };
+
   const openContactEditor = (contact?: Contact) => {
     if (!contact) {
       setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
@@ -998,6 +1189,8 @@ export default function App() {
     setSummary(EMPTY_SUMMARY);
     setAuthScreen("login");
     setTab("home");
+    setIsLocked(false);
+    setUnlockPin("");
     setInfo("Logged out.");
   };
 
@@ -1067,6 +1260,16 @@ export default function App() {
                 }
               />
               {!!loginErrors.password && <Text style={s.fieldError}>{loginErrors.password}</Text>}
+              <Text
+                style={s.linkSoft}
+                onPress={() => {
+                  setForgotEmail(login.email.trim());
+                  setForgotEmailError("");
+                  setAuthScreen("forgot");
+                }}
+              >
+                Forgot password?
+              </Text>
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={loginUser}>
                 <Text style={s.primaryBtnText}>{busy ? "Signing In..." : "Sign In"}</Text>
               </Pressable>
@@ -1219,6 +1422,36 @@ export default function App() {
             </View>
           )}
 
+          {authScreen === "forgot" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("login")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Forgot Password</Text>
+                  <Text style={s.authSub}>We will send reset instructions to your email</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Email</Text>
+              <Field
+                icon="mail-outline"
+                placeholder="Enter your account email"
+                value={forgotEmail}
+                onChangeText={(v) => {
+                  setForgotEmail(v);
+                  setForgotEmailError("");
+                }}
+                keyboardType="email-address"
+              />
+              {!!forgotEmailError && <Text style={s.fieldError}>{forgotEmailError}</Text>}
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
+                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Link"}</Text>
+              </Pressable>
+            </View>
+          )}
+
           {authScreen === "public" && (
             <View style={s.formWrap}>
               <View style={s.authTop}>
@@ -1257,8 +1490,12 @@ export default function App() {
                     <View style={s.publicCard}>
                       <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
                       <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
+                      <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
+                      <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
+                      <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
                       <Text style={s.publicLine}>Allergies: {publicData.medicalProfile?.allergies?.join(", ") || "None"}</Text>
                       <Text style={s.publicLine}>Conditions: {publicData.medicalProfile?.chronicConditions?.join(", ") || "None"}</Text>
+                      <Text style={s.publicLine}>Disease Start Year: {publicData.medicalSummary?.diseaseStartingYear || "Not set"}</Text>
                       <Text style={s.publicLine}>Contacts: {publicData.emergencyContacts?.length || 0}</Text>
                     </View>
                   )}
@@ -1293,7 +1530,12 @@ export default function App() {
   return (
     <SafeAreaView style={s.root}>
       <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView
+        contentContainerStyle={s.page}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <Text style={s.onlineText}>{isOnline ? "Online" : "Offline"} | Pending sync: {qCount}</Text>
 
         {tab === "home" && (
@@ -1437,9 +1679,12 @@ export default function App() {
                   <Text style={s.sectionHint}>No allergies added</Text>
                 ) : (
                   profile.allergies.map((item, idx) => (
-                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("allergies", item)}>
-                      <Text style={s.itemPillText}>{item} x</Text>
-                    </Pressable>
+                    <View key={`${item}-${idx}`} style={s.itemPill}>
+                      <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillRemove} onPress={() => removeProfileItem("allergies", item)}>
+                        <Ionicons name="close" size={14} color="#b91c1c" />
+                      </Pressable>
+                    </View>
                   ))
                 )}
               </View>
@@ -1466,9 +1711,12 @@ export default function App() {
                   <Text style={s.sectionHint}>No conditions added</Text>
                 ) : (
                   profile.chronicConditions.map((item, idx) => (
-                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("chronicConditions", item)}>
-                      <Text style={s.itemPillText}>{item} x</Text>
-                    </Pressable>
+                    <View key={`${item}-${idx}`} style={s.itemPill}>
+                      <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillRemove} onPress={() => removeProfileItem("chronicConditions", item)}>
+                        <Ionicons name="close" size={14} color="#b91c1c" />
+                      </Pressable>
+                    </View>
                   ))
                 )}
               </View>
@@ -1495,9 +1743,12 @@ export default function App() {
                   <Text style={s.sectionHint}>No medications added</Text>
                 ) : (
                   profile.medications.map((item, idx) => (
-                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeProfileItem("medications", item)}>
-                      <Text style={s.itemPillText}>{item} x</Text>
-                    </Pressable>
+                    <View key={`${item}-${idx}`} style={s.itemPill}>
+                      <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillRemove} onPress={() => removeProfileItem("medications", item)}>
+                        <Ionicons name="close" size={14} color="#b91c1c" />
+                      </Pressable>
+                    </View>
                   ))
                 )}
               </View>
@@ -1505,6 +1756,29 @@ export default function App() {
 
             <View style={s.sectionCard}>
               <Text style={s.sectionCardTitle}>Additional Details</Text>
+              <Text style={s.formLabel}>CNIC</Text>
+              <TextInput
+                style={s.inlineInput}
+                placeholder="12345-1234567-1"
+                value={profile.cnic}
+                onChangeText={(v) => setProfile((p) => ({ ...p, cnic: v }))}
+              />
+              <Text style={s.formLabel}>Age</Text>
+              <TextInput
+                style={s.inlineInput}
+                placeholder="Enter age"
+                keyboardType="number-pad"
+                value={profile.age}
+                onChangeText={(v) => setProfile((p) => ({ ...p, age: v.replace(/[^0-9]/g, "") }))}
+              />
+              <Text style={s.formLabel}>Address</Text>
+              <TextInput
+                style={[s.textArea, s.compactTextArea]}
+                multiline
+                placeholder="Enter complete address"
+                value={profile.address}
+                onChangeText={(v) => setProfile((p) => ({ ...p, address: v }))}
+              />
               <View style={s.summaryRow}>
                 <View style={s.flexOne}>
                   <Text style={s.formLabel}>Date of Birth</Text>
@@ -1540,12 +1814,78 @@ export default function App() {
             </View>
 
             <View style={[s.sectionCard, s.sectionCardSoft]}>
+              <Text style={s.sectionCardTitle}>Security</Text>
+              <Text style={s.sectionHint}>Enable local 2-step PIN lock for app and lock-screen mode.</Text>
+              {isLockEnabled ? (
+                <>
+                  <Text style={s.securityInfo}>2-step lock is enabled on this device.</Text>
+                  <View style={s.summaryRow}>
+                    <Pressable style={[s.primaryBtn, s.flexOne]} onPress={() => setIsLocked(true)}>
+                      <Text style={s.primaryBtnText}>Lock Now</Text>
+                    </Pressable>
+                    <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={disableLock}>
+                      <Text style={s.subtleBtnText}>Disable</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    style={s.inlineInput}
+                    placeholder="Set 4-digit PIN"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    value={lockPinDraft}
+                    onChangeText={(v) => setLockPinDraft(v.replace(/[^0-9]/g, "").slice(0, 4))}
+                  />
+                  <TextInput
+                    style={s.inlineInput}
+                    placeholder="Confirm PIN"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    value={lockPinConfirm}
+                    onChangeText={(v) => setLockPinConfirm(v.replace(/[^0-9]/g, "").slice(0, 4))}
+                  />
+                  <Pressable style={s.primaryBtn} onPress={enableLock}>
+                    <Text style={s.primaryBtnText}>Enable 2-Step Lock</Text>
+                  </Pressable>
+                </>
+              )}
+              {!!lockHint && <Text style={s.sectionHint}>{lockHint}</Text>}
+            </View>
+
+            <View style={[s.sectionCard, s.sectionCardSoft]}>
               <Text style={s.sectionCardTitle}>Treatment Summary</Text>
               <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
               <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
+              <TextInput
+                style={s.inlineInput}
+                placeholder="Disease starting year"
+                keyboardType="number-pad"
+                value={summary.diseaseStartingYear}
+                onChangeText={(v) => setSummary((p) => ({ ...p, diseaseStartingYear: v.replace(/[^0-9]/g, "") }))}
+              />
               <View style={s.summaryRow}>
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
+              </View>
+              <View style={s.inlineRow}>
+                <TextInput style={s.inlineInput} placeholder="Checkup file URL or name" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
+                <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
+              </View>
+              <View style={s.listWrap}>
+                {summary.checkupFiles.length === 0 ? (
+                  <Text style={s.sectionHint}>No checkup files added</Text>
+                ) : (
+                  summary.checkupFiles.map((item, idx) => (
+                    <View key={`${item}-${idx}`} style={s.itemPill}>
+                      <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillRemove} onPress={() => removeCheckupFile(item)}>
+                        <Ionicons name="close" size={14} color="#b91c1c" />
+                      </Pressable>
+                    </View>
+                  ))
+                )}
               </View>
               <View style={s.inlineRow}>
                 <TextInput style={s.inlineInput} placeholder="Current medication" value={smDraft} onChangeText={setSmDraft} />
@@ -1556,9 +1896,12 @@ export default function App() {
                   <Text style={s.sectionHint}>No summary medications</Text>
                 ) : (
                   summary.currentMedications.map((item, idx) => (
-                    <Pressable key={`${item}-${idx}`} style={s.itemPill} onPress={() => removeSummaryMedication(item)}>
-                      <Text style={s.itemPillText}>{item} x</Text>
-                    </Pressable>
+                    <View key={`${item}-${idx}`} style={s.itemPill}>
+                      <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillRemove} onPress={() => removeSummaryMedication(item)}>
+                        <Ionicons name="close" size={14} color="#b91c1c" />
+                      </Pressable>
+                    </View>
                   ))
                 )}
               </View>
@@ -1608,6 +1951,31 @@ export default function App() {
             <View style={s.screenHead}><Text style={s.screenTitle}>Emergency Contacts</Text></View>
             <View style={s.contactsTip}><Text style={s.contactsTipText}>Tip: Add up to 5 emergency contacts. These will be notified when you trigger a panic alert.</Text></View>
 
+            {showContactForm && (
+              <View style={s.contactFormCard}>
+                <Text style={s.sectionCardTitle}>{contactForm.id ? "Edit Contact" : "Add Contact"}</Text>
+                <TextInput style={s.inlineInput} placeholder="Name" value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} />
+                <TextInput style={s.inlineInput} placeholder="Contact Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} keyboardType="phone-pad" />
+                <TextInput style={s.inlineInput} placeholder="Email Address" value={contactForm.email} onChangeText={(v) => setContactForm((p) => ({ ...p, email: v }))} keyboardType="email-address" autoCapitalize="none" />
+                <TextInput style={s.inlineInput} placeholder="Relationship" value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} />
+                <Pressable style={[s.primaryToggle, contactForm.isPrimary && s.primaryToggleOn]} onPress={() => setContactForm((p) => ({ ...p, isPrimary: !p.isPrimary }))}>
+                  <Text style={s.primaryToggleText}>{contactForm.isPrimary ? "Primary selected" : "Set as primary"}</Text>
+                </Pressable>
+                <View style={s.summaryRow}>
+                  <Pressable style={[s.primaryBtn, s.flexOne]} onPress={saveContact}><Text style={s.primaryBtnText}>{busy ? "Saving..." : "Save Contact"}</Text></Pressable>
+                  <Pressable
+                    style={[s.subtleBtn, s.flexOne, s.compactBtn]}
+                    onPress={() => {
+                      setShowContactForm(false);
+                      setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
+                    }}
+                  >
+                    <Text style={s.subtleBtnText}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
             {contacts.length === 0 ? (
               <View style={s.emptyContactCard}>
                 <View style={s.emptyIconWrap}><Ionicons name="call-outline" size={42} color="#6b7280" /></View>
@@ -1629,20 +1997,6 @@ export default function App() {
               ))
             )}
 
-            {showContactForm && (
-              <View style={s.contactFormCard}>
-                <Text style={s.sectionCardTitle}>{contactForm.id ? "Edit Contact" : "Add Contact"}</Text>
-                <TextInput style={s.inlineInput} placeholder="Name" value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} />
-                <TextInput style={s.inlineInput} placeholder="Contact Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} keyboardType="phone-pad" />
-                <TextInput style={s.inlineInput} placeholder="Email Address" value={contactForm.email} onChangeText={(v) => setContactForm((p) => ({ ...p, email: v }))} keyboardType="email-address" autoCapitalize="none" />
-                <TextInput style={s.inlineInput} placeholder="Relationship" value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} />
-                <Pressable style={[s.primaryToggle, contactForm.isPrimary && s.primaryToggleOn]} onPress={() => setContactForm((p) => ({ ...p, isPrimary: !p.isPrimary }))}>
-                  <Text style={s.primaryToggleText}>{contactForm.isPrimary ? "Primary selected" : "Set as primary"}</Text>
-                </Pressable>
-                <Pressable style={s.primaryBtn} onPress={saveContact}><Text style={s.primaryBtnText}>{busy ? "Saving..." : "Save Contact"}</Text></Pressable>
-              </View>
-            )}
-
             <Pressable style={s.primaryBtn} onPress={() => openContactEditor()}>
               <Text style={s.primaryBtnText}>+ Add Emergency Contact</Text>
             </Pressable>
@@ -1650,6 +2004,7 @@ export default function App() {
         )}
 
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <View style={s.bottomBar}>
         <Pressable style={s.navItem} onPress={() => setTab("home")}>
@@ -1695,6 +2050,28 @@ export default function App() {
           <View style={s.sosActionRow}>
             <Pressable style={s.sosCancel} onPress={() => setShowSos(false)}><Text style={s.sosCancelText}>Cancel</Text></Pressable>
             <Pressable style={s.sosSend} onPress={sendSos}><Text style={s.sosSendText}>{busy ? "Sending..." : "Send Alert"}</Text></Pressable>
+          </View>
+        </View>
+      )}
+      {isLocked && (
+        <View style={s.lockOverlay}>
+          <View style={s.lockCard}>
+            <Ionicons name="lock-closed-outline" size={42} color="#b91c1c" />
+            <Text style={s.lockTitle}>Lock Screen Enabled</Text>
+            <Text style={s.lockSub}>Enter your 4-digit PIN to continue.</Text>
+            <TextInput
+              style={s.lockInput}
+              keyboardType="number-pad"
+              secureTextEntry
+              value={unlockPin}
+              onChangeText={(v) => setUnlockPin(v.replace(/[^0-9]/g, "").slice(0, 4))}
+              placeholder="PIN"
+              placeholderTextColor="#9ca3af"
+            />
+            {!!lockHint && <Text style={s.fieldError}>{lockHint}</Text>}
+            <Pressable style={s.primaryBtn} onPress={unlockApp}>
+              <Text style={s.primaryBtnText}>Unlock</Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -1921,10 +2298,28 @@ const s = StyleSheet.create({
   inlineBtnBlue: { backgroundColor: "#3b82f6" },
   inlineBtnGreen: { backgroundColor: "#22c55e" },
   inlineBtnText: { color: "#fff", fontWeight: "700" },
+  compactBtn: { marginTop: 12 },
 
   listWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  itemPill: { backgroundColor: "#f3f4f6", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  itemPill: {
+    backgroundColor: "#f3f4f6",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    maxWidth: "100%",
+  },
   itemPillText: { color: "#334155", fontSize: 12 },
+  itemPillRemove: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fee2e2",
+  },
   textArea: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -1935,8 +2330,10 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     color: "#111827",
   },
+  compactTextArea: { minHeight: 62 },
   sectionCardSoft: { backgroundColor: "#fafafa" },
   summaryRow: { flexDirection: "row", gap: 8 },
+  securityInfo: { color: "#334155", fontSize: 14 },
 
   qrTop: { alignItems: "center" },
   qrAvatar: { width: 116, height: 116, borderRadius: 58, backgroundColor: "#ffe4e6", alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 18 },
@@ -2015,4 +2412,38 @@ const s = StyleSheet.create({
   sosSend: { flex: 1, minHeight: 52, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   sosCancelText: { color: "#fff", fontSize: 19, fontWeight: "700" },
   sosSendText: { color: "#b91c1c", fontSize: 19, fontWeight: "800" },
+
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    zIndex: 7000,
+  },
+  lockCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    padding: 18,
+    gap: 10,
+    alignItems: "center",
+  },
+  lockTitle: { fontSize: 22, fontWeight: "800", color: "#111827" },
+  lockSub: { color: "#6b7280", textAlign: "center" },
+  lockInput: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    color: "#111827",
+    textAlign: "center",
+    fontSize: 18,
+    letterSpacing: 4,
+  },
 });

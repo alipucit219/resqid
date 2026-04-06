@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
 
 export class CreateEmergencyContactDto {
   @ApiProperty()
@@ -10,6 +10,9 @@ export class CreateEmergencyContactDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
+  @Matches(/^\+?[0-9()\-\s]{7,20}$/, {
+    message: "Phone number format is invalid",
+  })
   phoneNumber: string;
 
   @ApiPropertyOptional()

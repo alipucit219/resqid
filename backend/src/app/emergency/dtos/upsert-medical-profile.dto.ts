@@ -2,7 +2,11 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsArray,
   IsDateString,
+  IsInt,
   IsIn,
+  Matches,
+  Max,
+  Min,
   IsOptional,
   IsString,
 } from "class-validator";
@@ -14,6 +18,24 @@ export class UpsertMedicalProfileDto {
   @IsOptional()
   @IsIn(BLOOD_GROUPS)
   bloodGroup?: string;
+
+  @ApiPropertyOptional({ description: "Pakistani CNIC format: 12345-1234567-1" })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5}-\d{7}-\d{1}$/)
+  cnic?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  age?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

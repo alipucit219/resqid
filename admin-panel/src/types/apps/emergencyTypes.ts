@@ -10,6 +10,9 @@ export type MedicalProfileType = {
   id: string
   user: EmergencyUserType
   bloodGroup?: string
+  cnic?: string
+  age?: number
+  address?: string
   allergies: string[]
   chronicConditions: string[]
   medications: string[]
@@ -24,8 +27,10 @@ export type MedicalSummaryType = {
   user: EmergencyUserType
   hospitalName?: string
   doctorName?: string
+  diseaseStartingYear?: number
   treatmentDuration?: string
   treatmentStatus?: string
+  checkupFiles?: string[]
   currentMedications: string[]
   notes?: string
 }
