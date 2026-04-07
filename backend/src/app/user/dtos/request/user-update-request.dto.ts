@@ -55,6 +55,28 @@ export class UserUpdateRequestDto {
   dateOfBirth?: string;
 
   @ApiPropertyOptional({
+    name: "cnic",
+    type: String,
+    description: "CNIC in 12345-1234567-1 format",
+  })
+  @IsOptional()
+  @IsString({ message: "CNIC should be a string" })
+  @Transform(({ value }) => (value ? trim(value) : value))
+  @Matches(/^\\d{5}-\\d{7}-\\d{1}$/, {
+    message: "CNIC must be in 12345-1234567-1 format",
+  })
+  cnic?: string;
+
+  @ApiPropertyOptional({
+    name: "address",
+    type: String,
+  })
+  @IsOptional()
+  @IsString({ message: "Address should be a string" })
+  @Transform(({ value }) => (value ? trim(value) : value))
+  address?: string;
+
+  @ApiPropertyOptional({
     name: "gender",
     type: String,
   })

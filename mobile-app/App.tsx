@@ -31,7 +31,12 @@ type Gender = "male" | "female" | "other";
 type StatusTone = "success" | "error" | "info";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 type ToastItem = { id: number; message: string; tone: StatusTone };
-type AuthFieldErrors = Partial<Record<"fullName" | "email" | "phoneNumber" | "dateOfBirth" | "gender" | "password" | "confirmPassword", string>>;
+type AuthFieldErrors = Partial<
+  Record<
+    "fullName" | "email" | "phoneNumber" | "cnic" | "address" | "dateOfBirth" | "gender" | "password" | "confirmPassword",
+    string
+  >
+>;
 
 type User = {
   id: string;
@@ -40,6 +45,8 @@ type User = {
   role: string;
   isActive: boolean;
   phoneNumber?: string | null;
+  cnic?: string | null;
+  address?: string | null;
   dateOfBirth?: string | null;
   gender?: Gender | null;
 };
@@ -130,6 +137,8 @@ const EMPTY_REGISTER = {
   fullName: "",
   email: "",
   phoneNumber: "",
+  cnic: "",
+  address: "",
   dateOfBirth: "",
   gender: "",
   password: "",
@@ -773,6 +782,9 @@ export default function App() {
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(register.email.trim())) nextErrors.email = "Please enter a valid email.";
       if (!register.phoneNumber.trim()) nextErrors.phoneNumber = "Phone number is required.";
       else if (!isValidPhoneNumber(register.phoneNumber)) nextErrors.phoneNumber = "Please enter a valid contact number.";
+      if (!register.cnic.trim()) nextErrors.cnic = "CNIC is required.";
+      else if (!isValidCnic(register.cnic)) nextErrors.cnic = "CNIC must be 12345-1234567-1.";
+      if (!register.address.trim()) nextErrors.address = "Address is required.";
       if (!register.dateOfBirth.trim()) nextErrors.dateOfBirth = "Date of birth is required.";
       if (!register.gender.trim()) nextErrors.gender = "Gender is required.";
       if (!register.password) nextErrors.password = "Password is required.";
@@ -786,6 +798,8 @@ export default function App() {
         fullName: register.fullName.trim(),
         email: register.email.trim().toLowerCase(),
         phoneNumber: register.phoneNumber.trim(),
+        cnic: register.cnic.trim(),
+        address: register.address.trim(),
         dateOfBirth: register.dateOfBirth.trim(),
         gender: register.gender.trim().toLowerCase(),
         password: register.password,
@@ -1350,6 +1364,30 @@ export default function App() {
                 keyboardType="phone-pad"
               />
               {!!registerErrors.phoneNumber && <Text style={s.fieldError}>{registerErrors.phoneNumber}</Text>}
+              <Text style={s.formLabel}>CNIC</Text>
+              <Field
+                icon="document-text-outline"
+                placeholder="12345-1234567-1"
+                value={register.cnic}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, cnic: v.replace(/[^0-9-]/g, "").slice(0, 15) }));
+                  setRegisterErrors((p) => ({ ...p, cnic: undefined }));
+                }}
+                keyboardType="number-pad"
+              />
+              {!!registerErrors.cnic && <Text style={s.fieldError}>{registerErrors.cnic}</Text>}
+              <Text style={s.formLabel}>Address</Text>
+              <Field
+                icon="home-outline"
+                placeholder="House, street, city"
+                value={register.address}
+                onChangeText={(v) => {
+                  setRegister((p) => ({ ...p, address: v }));
+                  setRegisterErrors((p) => ({ ...p, address: undefined }));
+                }}
+                multiline
+              />
+              {!!registerErrors.address && <Text style={s.fieldError}>{registerErrors.address}</Text>}
 
               <View style={s.rowGap}>
                 <View style={s.flexOne}>

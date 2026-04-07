@@ -23,6 +23,12 @@ export class User {
   @Prop({ default: null, trim: true })
   phoneNumber?: string | null;
 
+  @Prop({ default: null, trim: true })
+  cnic?: string | null;
+
+  @Prop({ default: null, trim: true })
+  address?: string | null;
+
   @Prop({ default: null })
   dateOfBirth?: Date | null;
 

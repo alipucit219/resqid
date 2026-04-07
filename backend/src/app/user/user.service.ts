@@ -20,6 +20,8 @@ type SelfRegistrationPayload = {
   fullName: string;
   password: string;
   phoneNumber: string;
+  cnic: string;
+  address: string;
   dateOfBirth: string;
   gender: string;
 };
@@ -46,6 +48,8 @@ export class UserService {
       email: user.email,
       fullName: user.fullName,
       phoneNumber: user.phoneNumber ?? null,
+      cnic: user.cnic ?? null,
+      address: user.address ?? null,
       dateOfBirth: user.dateOfBirth ?? null,
       gender: user.gender ?? null,
       isActive: user.isActive,
@@ -104,6 +108,8 @@ export class UserService {
       password: encryptedPassword,
       role: body.role || Role.USER,
       phoneNumber: body.phoneNumber ?? null,
+      cnic: body.cnic ? body.cnic.trim() : null,
+      address: body.address ? body.address.trim() : null,
       dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
       gender: body.gender ?? null,
       isActive: body.isActive ?? true,
@@ -132,6 +138,8 @@ export class UserService {
       password: encryptedPassword,
       role: Role.USER,
       phoneNumber: payload.phoneNumber.trim(),
+      cnic: payload.cnic.trim(),
+      address: payload.address.trim(),
       dateOfBirth: new Date(payload.dateOfBirth),
       gender: payload.gender.trim().toLowerCase(),
       isActive: true,
@@ -195,6 +203,14 @@ export class UserService {
 
     if (payload.phoneNumber !== undefined) {
       user.phoneNumber = payload.phoneNumber.trim();
+    }
+
+    if (payload.cnic !== undefined) {
+      user.cnic = payload.cnic.trim();
+    }
+
+    if (payload.address !== undefined) {
+      user.address = payload.address.trim();
     }
 
     if (payload.dateOfBirth !== undefined) {
