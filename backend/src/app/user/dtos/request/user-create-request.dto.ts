@@ -77,7 +77,7 @@ export class UserCreateRequestDto {
   @IsOptional()
   @IsString({ message: "CNIC should be a string" })
   @Transform(({ value }) => (value ? trim(value) : value))
-  @Matches(/^\\d{5}-\\d{7}-\\d{1}$/, {
+  @Matches(/^\d{5}-\d{7}-\d{1}$/, {
     message: "CNIC must be in 12345-1234567-1 format",
   })
   cnic?: string;
