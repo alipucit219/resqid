@@ -24,7 +24,7 @@ import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-ca
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 type AuthScreen = "login" | "register" | "forgot" | "public";
-type Tab = "home" | "profile" | "qr" | "contacts";
+type Tab = "home" | "profile" | "summary" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
 type Gender = "male" | "female" | "other";
@@ -160,6 +160,7 @@ const EMPTY_SUMMARY: Summary = {
 
 const PHONE_REGEX = /^\+?[0-9()\-\s]{7,20}$/;
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
+const PDF_FILE_REGEX = /\.pdf([?#].*)?$/i;
 
 const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x || "").trim()).filter(Boolean) : []);
 const asDate = (v: unknown) => {
@@ -187,6 +188,11 @@ const labelCount = (count: number, singular: string, plural?: string) =>
   `${count} ${count === 1 ? singular : plural || `${singular}s`}`;
 const isValidPhoneNumber = (value: string) => PHONE_REGEX.test(String(value || "").trim());
 const isValidCnic = (value: string) => CNIC_REGEX.test(String(value || "").trim());
+const isPdfReference = (value: string) => PDF_FILE_REGEX.test(String(value || "").trim());
+const joinOrFallback = (items: string[], fallback = "None") => {
+  const clean = items.map((item) => item.trim()).filter(Boolean);
+  return clean.length ? clean.join(", ") : fallback;
+};
 const toNumericYear = (value: string) => {
   const year = Number(value);
   if (!Number.isInteger(year)) return null;
@@ -409,6 +415,7 @@ export default function App() {
 
   const syncing = useRef(false);
   const toastTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const mainScrollRef = useRef<ScrollView>(null);
   const firstName = useMemo(() => user?.fullName?.split(" ")[0] || "Demo", [user?.fullName]);
 
   const dismissToast = (id: number) => {
@@ -860,6 +867,9 @@ export default function App() {
     if (summary.diseaseStartingYear.trim() && parsedYear === null) {
       throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
     }
+    if (summary.checkupFiles.some((item) => !isPdfReference(item))) {
+      throw new Error("Checkup files must be PDF files (ending with .pdf).");
+    }
     const payload = {
       hospitalName: summary.hospitalName || undefined,
       doctorName: summary.doctorName || undefined,
@@ -885,7 +895,8 @@ export default function App() {
   const saveMedical = () =>
     run(async () => {
       const [profileMsg, summaryMsg] = await Promise.all([saveProfileCore(), saveSummaryCore()]);
-      setOk(`${profileMsg} ${summaryMsg}`);
+      const savedOffline = /offline/i.test(profileMsg) || /offline/i.test(summaryMsg);
+      setOk(savedOffline ? "Profile saved offline." : "Profile saved.");
     });
 
   const saveContact = () =>
@@ -1105,6 +1116,10 @@ export default function App() {
   const addCheckupFile = () => {
     const value = checkupFileDraft.trim();
     if (!value) return;
+    if (!isPdfReference(value)) {
+      pushToast("Only PDF files are allowed for checkup uploads.", "error");
+      return;
+    }
     setSummary((prev) => ({
       ...prev,
       checkupFiles: [...prev.checkupFiles, value],
@@ -1178,6 +1193,9 @@ export default function App() {
       });
     }
     setShowContactForm(true);
+    requestAnimationFrame(() => {
+      mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   const logout = () => {
@@ -1185,6 +1203,9 @@ export default function App() {
     setUser(null);
     setContacts([]);
     setQr(null);
+    setShowScanner(false);
+    setPublicData(null);
+    setPublicInput("");
     setProfile(EMPTY_PROFILE);
     setSummary(EMPTY_SUMMARY);
     setAuthScreen("login");
@@ -1323,7 +1344,7 @@ export default function App() {
                 placeholder="+92 300 1234567"
                 value={register.phoneNumber}
                 onChangeText={(v) => {
-                  setRegister((p) => ({ ...p, phoneNumber: v }));
+                  setRegister((p) => ({ ...p, phoneNumber: v.replace(/[^0-9()+\-\s]/g, "") }));
                   setRegisterErrors((p) => ({ ...p, phoneNumber: undefined }));
                 }}
                 keyboardType="phone-pad"
@@ -1530,9 +1551,14 @@ export default function App() {
   return (
     <SafeAreaView style={s.root}>
       <StatusBar style="dark" />
-      <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={s.root}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 22}
+      >
       <ScrollView
-        contentContainerStyle={s.page}
+        ref={mainScrollRef}
+        contentContainerStyle={[s.page, (tab === "profile" || tab === "contacts") && s.pageForm]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
@@ -1547,13 +1573,57 @@ export default function App() {
                 </View>
                 <Text style={s.brandMiniTitle}>ResQID</Text>
               </View>
-              <Pressable onPress={logout}>
-                <Ionicons name="settings-outline" size={24} color="#6b7280" />
-              </Pressable>
+              <View style={s.homeActions}>
+                <Pressable style={s.homeIconBtn} onPress={openScanner}>
+                  <Ionicons name="scan-outline" size={22} color="#6b7280" />
+                </Pressable>
+                <Pressable style={s.homeIconBtn} onPress={logout}>
+                  <Ionicons name="settings-outline" size={22} color="#6b7280" />
+                </Pressable>
+              </View>
             </View>
 
             <Text style={s.homeHello}>Hello, {firstName}</Text>
             <Text style={s.homeSub}>Your emergency profile is ready</Text>
+
+            {!showScanner ? (
+              <Pressable style={[s.quickCard, s.quickCardBlue]} onPress={openScanner}>
+                <View style={[s.sectionIcon, s.quickIconBlue]}>
+                  <Ionicons name="scan-outline" size={20} color="#fff" />
+                </View>
+                <View style={s.quickTextWrap}>
+                  <Text style={s.quickTitle}>Scan Emergency QR</Text>
+                  <Text style={s.quickSub}>Scanner moved here from bottom navigation</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color="#6b7280" />
+              </Pressable>
+            ) : (
+              <View style={s.sectionCard}>
+                <View style={s.contactsHeader}>
+                  <Text style={s.sectionCardTitle}>Scanner</Text>
+                  <Text style={s.viewAll} onPress={() => setShowScanner(false)}>Close</Text>
+                </View>
+                <View style={s.scannerWrap}>
+                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
+                </View>
+              </View>
+            )}
+
+            <View style={s.identityCard}>
+              <Text style={s.sectionCardTitle}>Identity Details</Text>
+              <Text style={s.identityLine}>CNIC: {profile.cnic || "Not set"}</Text>
+              <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
+              <Text style={s.identityLine}>Address: {profile.address || "Not set"}</Text>
+            </View>
+            {publicData && (
+              <View style={s.publicCard}>
+                <Text style={s.publicName}>{publicData.user?.fullName || "Scanned User"}</Text>
+                <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
+                <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
+                <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
+                <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
+              </View>
+            )}
 
             <View style={s.statGrid}>
               <View style={s.statCard}>
@@ -1578,14 +1648,21 @@ export default function App() {
               </View>
             </View>
 
+            <View style={s.sectionCard}>
+              <Text style={s.sectionCardTitle}>Profile Highlights</Text>
+              <Text style={s.publicLine}>Allergies: {joinOrFallback(profile.allergies)}</Text>
+              <Text style={s.publicLine}>Conditions: {joinOrFallback(profile.chronicConditions)}</Text>
+              <Text style={s.publicLine}>Medications: {joinOrFallback(profile.medications)}</Text>
+            </View>
+
             <Text style={s.sectionTitle}>Quick Actions</Text>
-            <Pressable style={[s.quickCard, s.quickCardPink]} onPress={() => setTab("qr")}>
+            <Pressable style={[s.quickCard, s.quickCardPink]} onPress={() => setTab("summary")}>
               <View style={[s.sectionIcon, s.quickIconRed]}>
-                <Ionicons name="qr-code" size={20} color="#fff" />
+                <Ionicons name="document-text-outline" size={20} color="#fff" />
               </View>
               <View style={s.quickTextWrap}>
-                <Text style={s.quickTitle}>Your Medical ID</Text>
-                <Text style={s.quickSub}>View or share your QR code</Text>
+                <Text style={s.quickTitle}>Summary</Text>
+                <Text style={s.quickSub}>View all profile and treatment details</Text>
               </View>
               <Ionicons name="chevron-forward" size={22} color="#6b7280" />
             </Pressable>
@@ -1870,7 +1947,7 @@ export default function App() {
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
               </View>
               <View style={s.inlineRow}>
-                <TextInput style={s.inlineInput} placeholder="Checkup file URL or name" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
+                <TextInput style={s.inlineInput} placeholder="Checkup PDF URL or name (.pdf)" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
                 <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
               </View>
               <View style={s.listWrap}>
@@ -1910,9 +1987,38 @@ export default function App() {
           </>
         )}
 
-        {tab === "qr" && (
+        {tab === "summary" && (
           <>
-            <View style={s.qrTop}><Text style={s.screenTitle}>Your Medical ID</Text></View>
+            <View style={s.screenHead}>
+              <Text style={s.screenTitle}>Summary</Text>
+            </View>
+            <View style={s.sectionCard}>
+              <Text style={s.sectionCardTitle}>Medical Profile Summary</Text>
+              <Text style={s.publicLine}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
+              <Text style={s.publicLine}>CNIC: {profile.cnic || "Not set"}</Text>
+              <Text style={s.publicLine}>Age: {profile.age || "Not set"}</Text>
+              <Text style={s.publicLine}>Address: {profile.address || "Not set"}</Text>
+              <Text style={s.publicLine}>Date of Birth: {profile.dateOfBirth || "Not set"}</Text>
+              <Text style={s.publicLine}>Gender: {profile.gender || "Not set"}</Text>
+              <Text style={s.publicLine}>Allergies: {joinOrFallback(profile.allergies)}</Text>
+              <Text style={s.publicLine}>Conditions: {joinOrFallback(profile.chronicConditions)}</Text>
+              <Text style={s.publicLine}>Medications: {joinOrFallback(profile.medications)}</Text>
+              <Text style={s.publicLine}>Emergency Notes: {profile.emergencyNotes || "Not set"}</Text>
+            </View>
+
+            <View style={s.sectionCard}>
+              <Text style={s.sectionCardTitle}>Treatment Summary</Text>
+              <Text style={s.publicLine}>Hospital: {summary.hospitalName || "Not set"}</Text>
+              <Text style={s.publicLine}>Doctor: {summary.doctorName || "Not set"}</Text>
+              <Text style={s.publicLine}>Disease Starting Year: {summary.diseaseStartingYear || "Not set"}</Text>
+              <Text style={s.publicLine}>Duration: {summary.treatmentDuration || "Not set"}</Text>
+              <Text style={s.publicLine}>Status: {summary.treatmentStatus || "Not set"}</Text>
+              <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(summary.checkupFiles)}</Text>
+              <Text style={s.publicLine}>Current Medications: {joinOrFallback(summary.currentMedications)}</Text>
+              <Text style={s.publicLine}>Notes: {summary.notes || "Not set"}</Text>
+            </View>
+
+            <View style={s.qrTop}><Text style={s.sectionCardTitle}>Medical QR</Text></View>
             <View style={s.qrAvatar}><Text style={s.qrAvatarText}>{firstName.slice(0, 1).toUpperCase()}</Text></View>
             <Text style={s.qrName}>{user.fullName}</Text>
             <Text style={s.qrSub}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
@@ -1955,7 +2061,13 @@ export default function App() {
               <View style={s.contactFormCard}>
                 <Text style={s.sectionCardTitle}>{contactForm.id ? "Edit Contact" : "Add Contact"}</Text>
                 <TextInput style={s.inlineInput} placeholder="Name" value={contactForm.name} onChangeText={(v) => setContactForm((p) => ({ ...p, name: v }))} />
-                <TextInput style={s.inlineInput} placeholder="Contact Number" value={contactForm.phoneNumber} onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v }))} keyboardType="phone-pad" />
+                <TextInput
+                  style={s.inlineInput}
+                  placeholder="Contact Number"
+                  value={contactForm.phoneNumber}
+                  onChangeText={(v) => setContactForm((p) => ({ ...p, phoneNumber: v.replace(/[^0-9()+\-\s]/g, "") }))}
+                  keyboardType="phone-pad"
+                />
                 <TextInput style={s.inlineInput} placeholder="Email Address" value={contactForm.email} onChangeText={(v) => setContactForm((p) => ({ ...p, email: v }))} keyboardType="email-address" autoCapitalize="none" />
                 <TextInput style={s.inlineInput} placeholder="Relationship" value={contactForm.relationship} onChangeText={(v) => setContactForm((p) => ({ ...p, relationship: v }))} />
                 <Pressable style={[s.primaryToggle, contactForm.isPrimary && s.primaryToggleOn]} onPress={() => setContactForm((p) => ({ ...p, isPrimary: !p.isPrimary }))}>
@@ -2016,9 +2128,9 @@ export default function App() {
           <Text style={[s.navLabel, tab === "profile" && s.navLabelOn]}>Profile</Text>
         </Pressable>
         <View style={s.navSpacer} />
-        <Pressable style={s.navItem} onPress={() => setTab("qr")}>
-          <Ionicons name="qr-code-outline" size={22} color={tab === "qr" ? "#b91c1c" : "#6b7280"} />
-          <Text style={[s.navLabel, tab === "qr" && s.navLabelOn]}>QR Code</Text>
+        <Pressable style={s.navItem} onPress={() => setTab("summary")}>
+          <Ionicons name="document-text-outline" size={22} color={tab === "summary" ? "#b91c1c" : "#6b7280"} />
+          <Text style={[s.navLabel, tab === "summary" && s.navLabelOn]}>Summary</Text>
         </Pressable>
         <Pressable style={s.navItem} onPress={() => setTab("contacts")}>
           <Ionicons name="call-outline" size={22} color={tab === "contacts" ? "#b91c1c" : "#6b7280"} />
@@ -2223,14 +2335,35 @@ const s = StyleSheet.create({
   toastInfo: { backgroundColor: "#e0f2fe", borderColor: "#7dd3fc" },
 
   page: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 140, gap: 10 },
+  pageForm: { paddingBottom: 280 },
   onlineText: { color: "#0f766e", fontWeight: "700", textAlign: "center" },
 
   homeTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  homeActions: { flexDirection: "row", gap: 8 },
+  homeIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
   brandMini: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMiniIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#e3262f", alignItems: "center", justifyContent: "center" },
   brandMiniTitle: { fontSize: 34 / 2, fontWeight: "800", color: "#111827" },
   homeHello: { fontSize: 48 / 2, fontWeight: "800", color: "#111827", marginTop: 6 },
   homeSub: { color: "#6b7280", fontSize: 17 },
+  identityCard: {
+    borderWidth: 1,
+    borderColor: "#f3d7d9",
+    borderRadius: 16,
+    backgroundColor: "#fff7f7",
+    padding: 14,
+    gap: 4,
+  },
+  identityLine: { color: "#334155", fontSize: 13 },
 
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 6 },
   statCard: { width: "48.3%", borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 18, backgroundColor: "#fff", padding: 14 },

@@ -46,6 +46,19 @@ const EmergencyContactsPage = () => {
     isPrimary: false
   })
 
+  const openCreateForm = () => {
+    setActiveRow(null)
+    setForm({
+      userId: userIdFilter.trim(),
+      name: '',
+      phoneNumber: '',
+      email: '',
+      relationship: '',
+      isPrimary: false
+    })
+    setOpenForm(true)
+  }
+
   useEffect(() => {
     dispatch(
       fetchEmergencyContacts({
@@ -69,6 +82,7 @@ const EmergencyContactsPage = () => {
           <Box>
             <div>{row?.user?.fullName || 'N/A'}</div>
             <small>{row?.user?.email || ''}</small>
+            <small style={{ display: 'block' }}>{row?.user?.id || ''}</small>
           </Box>
         )
       },
@@ -167,16 +181,16 @@ const EmergencyContactsPage = () => {
   )
 
   const handleSubmit = async () => {
-    if (!form.userId) {
+    if (!String(form.userId || '').trim()) {
       toast.error('User id is required')
       return
     }
 
     const payload = {
-      name: form.name,
-      phoneNumber: form.phoneNumber,
-      email: form.email || undefined,
-      relationship: form.relationship || undefined,
+      name: String(form.name || '').trim(),
+      phoneNumber: String(form.phoneNumber || '').trim(),
+      email: String(form.email || '').trim() || undefined,
+      relationship: String(form.relationship || '').trim() || undefined,
       isPrimary: Boolean(form.isPrimary)
     }
 
@@ -200,7 +214,7 @@ const EmergencyContactsPage = () => {
     const res =
       activeRow?.id && activeRow?.user?.id
         ? await dispatch(updateEmergencyContact({ userId: activeRow.user.id, contactId: activeRow.id, payload }))
-        : await dispatch(createEmergencyContact({ userId: form.userId, payload }))
+        : await dispatch(createEmergencyContact({ userId: String(form.userId).trim(), payload }))
 
     if (res.type.includes('fulfilled')) {
       toast.success(activeRow?.id ? 'Contact updated' : 'Contact created')
@@ -228,11 +242,7 @@ const EmergencyContactsPage = () => {
         action={
           <Button
             variant='contained'
-            onClick={() => {
-              setActiveRow(null)
-              setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
-              setOpenForm(true)
-            }}
+            onClick={openCreateForm}
           >
             Add Contact
           </Button>
@@ -253,6 +263,7 @@ const EmergencyContactsPage = () => {
             label='Filter by User ID'
             value={userIdFilter}
             onChange={e => setUserIdFilter(e.target.value)}
+            helperText='Paste a user id here, then click Add Contact to auto-fill it in the form'
           />
         </Box>
 
@@ -281,14 +292,14 @@ const EmergencyContactsPage = () => {
               label='User ID'
               value={form.userId}
               onChange={e => setForm({ ...form, userId: e.target.value })}
-              helperText='Mongo user id for the profile owner'
+              helperText='Mongo user id for the profile owner. Tip: use Filter by User ID above to prefill this field.'
             />
           )}
           <TextField label='Name' value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <TextField
             label='Phone Number'
             value={form.phoneNumber}
-            onChange={e => setForm({ ...form, phoneNumber: e.target.value })}
+            onChange={e => setForm({ ...form, phoneNumber: e.target.value.replace(/[^0-9()+\-\s]/g, '') })}
           />
           <TextField
             label='Email'

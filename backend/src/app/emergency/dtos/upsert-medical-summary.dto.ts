@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsString, Matches, Max, Min } from "class-validator";
 
 export class UpsertMedicalSummaryDto {
   @ApiPropertyOptional()
@@ -39,6 +39,10 @@ export class UpsertMedicalSummaryDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Matches(/\.pdf([?#].*)?$/i, {
+    each: true,
+    message: "Checkup files must be PDF files (.pdf).",
+  })
   checkupFiles?: string[];
 
   @ApiPropertyOptional()

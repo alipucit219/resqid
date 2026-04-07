@@ -27,30 +27,24 @@ const TableHeader = (props: TableHeaderProps) => {
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
-        justifyContent: 'flex-start'
+        justifyContent: 'space-between'
       }}
     >
-      {/* <Button color='secondary' variant='outlined' startIcon={<Icon icon='tabler:upload' />}>
-        Export
-      </Button> */}
-      <Box sx={{ rowGap: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', width: '100%' }}>
-        <TextField
-          size='small'
-          value={value}
-          sx={{ minWidth: { xs: '100%', sm: 260 }, mr: { xs: 0, sm: 4 } }}
-          placeholder='Search User'
-          onChange={e => handleFilter(e.target.value)}
-        />
-        {WithAuthorization({
-          component:
-            <Button onClick={toggle} variant='contained' sx={{ '& svg': { mr: 2 } }}>
-              <Icon fontSize='1.125rem' icon='tabler:plus' />
-              Add New User
-            </Button>,
-          requiredPermission: "CREATE_USER"
-        })}
-
-      </Box>
+      <TextField
+        size='small'
+        value={value}
+        sx={{ minWidth: { xs: '100%', sm: 280 }, mr: { xs: 0, sm: 2 } }}
+        placeholder='Search User'
+        onChange={e => handleFilter(e.target.value)}
+      />
+      {WithAuthorization({
+        component:
+          <Button onClick={toggle} variant='contained' sx={{ '& svg': { mr: 2 }, ml: { xs: 0, sm: 'auto' } }}>
+            <Icon fontSize='1.125rem' icon='tabler:plus' />
+            Add New User
+          </Button>,
+        requiredPermission: "CREATE_USER"
+      })}
     </Box>
   )
 }
