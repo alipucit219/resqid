@@ -21,6 +21,8 @@ import {
   updateMedicalSummary
 } from 'src/store/apps/medicalSummaries'
 
+const PDF_FILE_REGEX = /\.pdf([?#].*)?$/i
+
 const MedicalSummariesPage = () => {
   const dispatch = useDispatch<AppDispatch>()
   const medicalSummaries = useSelector((state: RootState) => state.medicalSummaries)
@@ -63,6 +65,7 @@ const MedicalSummariesPage = () => {
           <Box>
             <div>{row?.user?.fullName || 'N/A'}</div>
             <small>{row?.user?.email || ''}</small>
+            <small style={{ display: 'block' }}>{row?.user?.id || ''}</small>
           </Box>
         )
       },
@@ -152,6 +155,10 @@ const MedicalSummariesPage = () => {
         .filter(Boolean),
       notes: form.notes || undefined
     }
+    if (payload.checkupFiles.some((item: string) => !PDF_FILE_REGEX.test(item))) {
+      toast.error('Checkup files must be PDF files (.pdf)')
+      return
+    }
 
     const res = await dispatch(updateMedicalSummary({ userId: activeRow.user.id, payload }))
     if (res.type.includes('fulfilled')) {
@@ -181,6 +188,7 @@ const MedicalSummariesPage = () => {
             label='Search by user'
             value={search}
             onChange={e => setSearch(e.target.value)}
+            helperText='User ID is shown under each email in the User column'
           />
         </Box>
 
@@ -218,7 +226,7 @@ const MedicalSummariesPage = () => {
           />
           <TextField label='Treatment Status' value={form.treatmentStatus} onChange={e => setForm({ ...form, treatmentStatus: e.target.value })} />
           <TextField
-            label='Checkup Files (comma separated URLs or names)'
+            label='Checkup Files (comma separated PDF URLs or names)'
             value={form.checkupFiles}
             onChange={e => setForm({ ...form, checkupFiles: e.target.value })}
           />
