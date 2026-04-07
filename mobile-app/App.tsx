@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import * as Notifications from "expo-notifications";
 import {
   AppState,
   Alert,
@@ -21,6 +22,7 @@ import * as Location from "expo-location";
 import * as SQLite from "expo-sqlite";
 import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
+import * as Notifications from "expo-notifications";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 type AuthScreen = "login" | "register" | "forgot" | "public";
@@ -133,6 +135,8 @@ const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const GENDERS: Gender[] = ["male", "female", "other"];
 const STATUS_AUTO_HIDE_MS = 3500;
 const REQUEST_TIMEOUT_MS = 7000;
+const LOCK_CHANNEL_ID = "lockscreen-alert";
+const LOCK_CHANNEL_ID = "lockscreen-alert";
 const EMPTY_REGISTER = {
   fullName: "",
   email: "",
@@ -460,6 +464,42 @@ export default function App() {
       emergencyUrl: normalizeEmergencyUrl(value.emergencyUrl),
     });
   };
+  useEffect(() => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+
+    void (async () => {
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync(LOCK_CHANNEL_ID, {
+          name: "Lockscreen Alerts",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          sound: "default",
+        });
+      } else {
+        await Notifications.requestPermissionsAsync();
+      }
+    })();
+  }, []);
+
+  const triggerLockscreenTest = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "ResQID Quick Access",
+        body: "Tap to open home over lock screen",
+        sound: "default",
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        categoryIdentifier: "lockscreen",
+      },
+      trigger: null,
+    });
+  };
   const resetRegisterForm = () => {
     setRegister({ ...EMPTY_REGISTER });
     setRegisterErrors({});
@@ -543,9 +583,9 @@ export default function App() {
       profileRes
         ? {
             bloodGroup: profileRes.bloodGroup || "",
-            cnic: profileRes.cnic || "",
+            cnic: profileRes.cnic || activeUser?.cnic || "",
             age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
-            address: profileRes.address || "",
+            address: profileRes.address || activeUser?.address || "",
             allergies: arr(profileRes.allergies),
             chronicConditions: arr(profileRes.chronicConditions),
             medications: arr(profileRes.medications),
@@ -555,6 +595,8 @@ export default function App() {
           }
         : {
             ...EMPTY_PROFILE,
+            cnic: activeUser?.cnic || "",
+            address: activeUser?.address || "",
             dateOfBirth: asDate(activeUser?.dateOfBirth),
             gender: activeUser?.gender || "",
           },
@@ -1649,9 +1691,9 @@ export default function App() {
 
             <View style={s.identityCard}>
               <Text style={s.sectionCardTitle}>Identity Details</Text>
-              <Text style={s.identityLine}>CNIC: {profile.cnic || "Not set"}</Text>
+              <Text style={s.identityLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
               <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
-              <Text style={s.identityLine}>Address: {profile.address || "Not set"}</Text>
+              <Text style={s.identityLine}>Address: {profile.address || user?.address || "Not set"}</Text>
             </View>
             {publicData && (
               <View style={s.publicCard}>
@@ -1720,6 +1762,17 @@ export default function App() {
               <View style={s.quickTextWrap}>
                 <Text style={s.quickTitle}>Emergency View</Text>
                 <Text style={s.quickSub}>Preview lock-screen mode</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color="#6b7280" />
+            </Pressable>
+
+            <Pressable style={[s.quickCard, s.quickCardGreen]} onPress={triggerLockscreenTest}>
+              <View style={[s.sectionIcon, s.quickIconGreen]}>
+                <Ionicons name="notifications-outline" size={20} color="#fff" />
+              </View>
+              <View style={s.quickTextWrap}>
+                <Text style={s.quickTitle}>Test Lock Screen Alert</Text>
+                <Text style={s.quickSub}>Send full-screen priority notification</Text>
               </View>
               <Ionicons name="chevron-forward" size={22} color="#6b7280" />
             </Pressable>
@@ -2422,8 +2475,10 @@ const s = StyleSheet.create({
   },
   quickCardPink: { backgroundColor: "#fff7f7", borderColor: "#f3d7d9" },
   quickCardBlue: { backgroundColor: "#f0f7ff", borderColor: "#cde3fb" },
+  quickCardGreen: { backgroundColor: "#ecfdf3", borderColor: "#bbf7d0" },
   quickIconRed: { backgroundColor: "#e3262f" },
   quickIconBlue: { backgroundColor: "#3b82f6" },
+  quickIconGreen: { backgroundColor: "#16a34a" },
   quickTextWrap: { flex: 1 },
   quickTitle: { fontSize: 34 / 2, fontWeight: "800", color: "#111827" },
   quickSub: { color: "#6b7280" },

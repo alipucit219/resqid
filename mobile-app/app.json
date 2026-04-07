@@ -25,7 +25,9 @@
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "USE_FULL_SCREEN_INTENT"
       ]
     },
     "web": {
@@ -44,7 +46,10 @@
         {
           "locationWhenInUsePermission": "Allow ResQID to use your location for SOS alerts."
         }
-      ]
+      ],
+      "expo-notifications",
+      "./plugins/show-when-locked",
+      "./plugins/fullscreen-intent"
     ]
   }
 }
