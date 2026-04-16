@@ -43,6 +43,10 @@ export class MedicalProfileService {
     return user;
   }
 
+  private escapeRegex(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   async getByUserId(userId: string) {
     await this.ensureUserExists(userId);
     return await this.medicalProfileModel.findOne({
@@ -69,7 +73,7 @@ export class MedicalProfileService {
     );
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<any> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -94,6 +98,22 @@ export class MedicalProfileService {
 
       profileFilter.userId = {
         $in: users.map((user) => user._id),
+      };
+    }
+
+    if (query.bloodGroup) {
+      profileFilter.bloodGroup = {
+        $regex: `^${this.escapeRegex(query.bloodGroup)}$`,
+        $options: "i",
+      };
+    }
+
+    if (query.allergy) {
+      profileFilter.allergies = {
+        $elemMatch: {
+          $regex: this.escapeRegex(query.allergy),
+          $options: "i",
+        },
       };
     }
 
@@ -128,7 +148,7 @@ export class MedicalProfileService {
     };
   }
 
-  async adminGetByUserId(userId: string) {
+  async adminGetByUserId(userId: string): Promise<any> {
     await this.ensureUserExists(userId);
     const profile = await this.medicalProfileModel
       .findOne({ userId: this.toObjectId(userId) })
@@ -147,6 +167,63 @@ export class MedicalProfileService {
             isActive: (profile.userId as any).isActive,
           }
         : null,
+    };
+  }
+
+  async adminReports(): Promise<any> {
+    const [users, medicalProfiles, bloodGroups, allergies] = await Promise.all([
+      this.userModel.countDocuments({ deletedAt: null }),
+      this.medicalProfileModel.countDocuments(),
+      this.medicalProfileModel.aggregate([
+        {
+          $match: {
+            bloodGroup: {
+              $type: "string",
+              $ne: "",
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { $toUpper: "$bloodGroup" },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1, _id: 1 } },
+      ]),
+      this.medicalProfileModel.aggregate([
+        { $unwind: "$allergies" },
+        {
+          $match: {
+            allergies: {
+              $type: "string",
+              $ne: "",
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { $toLower: "$allergies" },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1, _id: 1 } },
+      ]),
+    ]);
+
+    return {
+      totals: {
+        users,
+        medicalProfiles,
+      },
+      bloodGroups: bloodGroups.map((item) => ({
+        value: item._id,
+        count: item.count,
+      })),
+      allergies: allergies.map((item) => ({
+        value: item._id,
+        count: item.count,
+      })),
     };
   }
 }

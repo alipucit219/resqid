@@ -92,14 +92,14 @@ const resolveApiBases = () => {
     Platform.OS === "web"
       ? "http://localhost:8000"
       : Platform.OS === "android"
-        ? "http://10.0.2.2:8000"
+        ? "http://localhost:8000"
         : "http://localhost:8000";
   const priority =
     Platform.OS === "web"
       ? [webBase, nativeBase, fallbackBase]
       : Platform.OS === "ios"
         ? [iosBase, nativeBase, fallbackBase]
-        : [androidBase, nativeBase, "http://10.0.2.2:8000", fallbackBase];
+        : [androidBase, nativeBase, "http://localhost:8000", fallbackBase];
 
   const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, fallbackBase]
     .map((item) => String(item || "").trim())

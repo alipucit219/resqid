@@ -11,13 +11,14 @@ const UserView = () => {
     return (
     WithAuthorization({
       component:
-    <UserViewPage id={router?.query?.id as unknown as number} />
+    <UserViewPage id={String(router?.query?.id)} />
       ,
       requiredPermission:"LIST_USERS"
     })
     )
   }
-  
+
+  return null
 }
 
 export default UserView

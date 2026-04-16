@@ -63,7 +63,7 @@ export class MedicalSummaryService {
     );
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<any> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -117,6 +117,30 @@ export class MedicalSummaryService {
           : null,
       })),
       total,
+    };
+  }
+
+  async adminGetByUserId(userId: string): Promise<any> {
+    await this.ensureUserExists(userId);
+    const summary = await this.medicalSummaryModel
+      .findOne({ userId: this.toObjectId(userId) })
+      .populate("userId", "fullName email role isActive")
+      .lean();
+
+    return {
+      id: summary?._id?.toString?.(),
+      ...summary,
+      user: summary?.userId
+        ? {
+            id:
+              (summary.userId as any)._id?.toString?.() ||
+              (summary.userId as any).id,
+            fullName: (summary.userId as any).fullName,
+            email: (summary.userId as any).email,
+            role: (summary.userId as any).role,
+            isActive: (summary.userId as any).isActive,
+          }
+        : null,
     };
   }
 }

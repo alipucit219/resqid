@@ -82,6 +82,43 @@ export class EmergencyContactService {
       .sort({ isPrimary: -1, createdAt: -1 });
   }
 
+  async adminGetByUserId(userId: string): Promise<any> {
+    const user = await this.userModel
+      .findOne({
+        _id: this.toObjectId(userId),
+        deletedAt: null,
+      })
+      .select("fullName email role isActive")
+      .lean();
+
+    if (!user) {
+      throw new NotFoundException("User not found.");
+    }
+
+    const contacts = await this.emergencyContactModel
+      .find({ userId: this.toObjectId(userId) })
+      .sort({ isPrimary: -1, createdAt: -1 })
+      .lean();
+
+    return {
+      user: {
+        id: (user as any)._id?.toString?.() || (user as any).id,
+        fullName: (user as any).fullName,
+        email: (user as any).email,
+        role: (user as any).role,
+        isActive: (user as any).isActive,
+      },
+      contacts: contacts.map((item) => ({
+        id: item._id.toString(),
+        name: item.name,
+        phoneNumber: item.phoneNumber,
+        email: item.email,
+        relationship: item.relationship,
+        isPrimary: item.isPrimary,
+      })),
+    };
+  }
+
   async createByUserId(userId: string, payload: CreateEmergencyContactDto) {
     await this.ensureUserExists(userId);
     const userObjectId = this.toObjectId(userId);
@@ -155,7 +192,7 @@ export class EmergencyContactService {
     return { message: "Emergency contact deleted successfully." };
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<any> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -187,32 +224,75 @@ export class EmergencyContactService {
       ];
     }
 
-    const [data, total] = await Promise.all([
-      this.emergencyContactModel
-        .find(filter)
-        .sort({ isPrimary: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate("userId", "fullName email role isActive")
-        .lean(),
-      this.emergencyContactModel.countDocuments(filter),
+    const [data, totalResult] = await Promise.all([
+      this.emergencyContactModel.aggregate([
+        { $match: filter },
+        { $sort: { isPrimary: -1, createdAt: -1 } },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "user",
+          },
+        },
+        { $unwind: "$user" },
+        { $match: { "user.deletedAt": null } },
+        {
+          $group: {
+            _id: "$userId",
+            user: {
+              $first: {
+                id: { $toString: "$user._id" },
+                fullName: "$user.fullName",
+                email: "$user.email",
+                role: "$user.role",
+                isActive: "$user.isActive",
+              },
+            },
+            contacts: {
+              $push: {
+                id: { $toString: "$_id" },
+                name: "$name",
+                phoneNumber: "$phoneNumber",
+                email: "$email",
+                relationship: "$relationship",
+                isPrimary: "$isPrimary",
+              },
+            },
+            totalContacts: { $sum: 1 },
+            latestCreatedAt: { $max: "$createdAt" },
+          },
+        },
+        { $sort: { latestCreatedAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ]),
+      this.emergencyContactModel.aggregate([
+        { $match: filter },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "user",
+          },
+        },
+        { $unwind: "$user" },
+        { $match: { "user.deletedAt": null } },
+        { $group: { _id: "$userId" } },
+        { $count: "total" },
+      ]),
     ]);
 
     return {
       data: data.map((item) => ({
         id: item._id.toString(),
-        ...item,
-        user: item.userId
-          ? {
-              id: (item.userId as any)._id?.toString?.() || (item.userId as any).id,
-              fullName: (item.userId as any).fullName,
-              email: (item.userId as any).email,
-              role: (item.userId as any).role,
-              isActive: (item.userId as any).isActive,
-            }
-          : null,
+        user: item.user,
+        contacts: item.contacts,
+        totalContacts: item.totalContacts,
       })),
-      total,
+      total: totalResult[0]?.total || 0,
     };
   }
 }
