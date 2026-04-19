@@ -150,6 +150,13 @@ const normalizeEmergencyUrl = (value?: string | null) => {
     return raw;
   }
 };
+const resolveAssetUrl = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return `${API_ORIGIN}${raw}`;
+  return `${API_ORIGIN}/${raw.replace(/^\/+/, "")}`;
+};
 
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const GENDERS: Gender[] = ["male", "female", "other"];
@@ -1075,9 +1082,7 @@ export default function App() {
       })),
     };
     setSummaries(entries);
-    if (entries[0]) {
-      setSummary(entries[0]);
-    }
+    clearSummaryDraft();
     if (isOnline) {
       try {
         await api("/me/medical-summary", "PUT", token, payload);
@@ -1375,14 +1380,14 @@ export default function App() {
 
       setSummary((prev) => ({
         ...prev,
-        checkupFiles: [...prev.checkupFiles, String(data?.url || "").trim()].filter(Boolean),
+        checkupFiles: [...prev.checkupFiles, String(data?.path || data?.url || "").trim()].filter(Boolean),
       }));
       setOk("Checkup PDF uploaded.");
     });
 
   const downloadCheckupFile = (value: string) =>
     run(async () => {
-      const url = String(value || "").trim();
+      const url = resolveAssetUrl(value);
       if (!url) throw new Error("No PDF URL available.");
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) throw new Error("Cannot open this PDF on this device.");
@@ -1396,8 +1401,9 @@ export default function App() {
       return;
     }
     const editingExisting = summaries.some((item) => item.id === nextDraft.id);
-    setSummaries((prev) => mergeSummaryDraft(prev, nextDraft));
-    setSummary(nextDraft);
+    const nextEntries = mergeSummaryDraft(summaries, nextDraft);
+    setSummaries(nextEntries);
+    clearSummaryDraft();
     setOk(editingExisting ? "Summary entry updated." : "Summary entry added.");
   };
 
