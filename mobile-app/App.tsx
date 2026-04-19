@@ -7,6 +7,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  NativeModules,
   Platform,
   Pressable,
   SafeAreaView,
@@ -85,25 +86,43 @@ const normalizeApiBase = (value: string) => {
   const candidate = value.replace(/\/$/, "");
   return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
 };
+const inferDevApiBase = () => {
+  if (Platform.OS === "web") return "http://localhost:8000";
+
+  const scriptUrl = String(NativeModules?.SourceCode?.scriptURL || "").trim();
+  if (!scriptUrl) return "";
+
+  try {
+    const parsed = new URL(scriptUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+      return "http://localhost:8000";
+    }
+    return `${parsed.protocol}//${parsed.hostname}:8000`;
+  } catch {
+    return "";
+  }
+};
 const resolveApiBases = () => {
   const webBase = process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
   const iosBase = process.env.EXPO_PUBLIC_IOS_API_BASE_URL;
   const androidBase = process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL;
   const nativeBase = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL;
+  const inferredBase = inferDevApiBase();
   const fallbackBase =
     Platform.OS === "web"
       ? "http://localhost:8000"
       : Platform.OS === "android"
-        ? "http://localhost:8000"
-        : "http://localhost:8000";
+        ? inferredBase || "http://10.0.2.2:8000"
+        : inferredBase || "http://localhost:8000";
   const priority =
     Platform.OS === "web"
       ? [webBase, nativeBase, fallbackBase]
       : Platform.OS === "ios"
-        ? [iosBase, nativeBase, fallbackBase]
-        : [androidBase, nativeBase, "http://localhost:8000", fallbackBase];
+        ? [inferredBase, iosBase, nativeBase, fallbackBase]
+        : [inferredBase, androidBase, nativeBase, "http://10.0.2.2:8000", fallbackBase];
 
-  const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, fallbackBase]
+  const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, inferredBase, fallbackBase]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .map((item) => normalizeApiBase(item));
