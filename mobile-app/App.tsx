@@ -25,7 +25,7 @@ import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-type AuthScreen = "login" | "register" | "forgot" | "public";
+type AuthScreen = "login" | "register" | "forgot" | "reset" | "public";
 type Tab = "home" | "profile" | "summary" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
@@ -214,6 +214,16 @@ const tokenFrom = (v: string) =>
   v.includes("/emergency-access/")
     ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
     : v.trim();
+const resetTokenFrom = (v: string) => {
+  const raw = String(v || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    return parsed.searchParams.get("token")?.trim() || raw;
+  } catch {
+    return raw.includes("token=") ? raw.split("token=")[1].split("&")[0].split("#")[0].trim() : raw;
+  }
+};
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
 const netErr = (e: unknown) =>
   /network request failed|fetch failed|failed to fetch|abort|timeout|timed out/i.test(errMsg(e));
@@ -432,6 +442,11 @@ export default function App() {
   const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotEmailError, setForgotEmailError] = useState("");
+  const [resetTokenInput, setResetTokenInput] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [register, setRegister] = useState({ ...EMPTY_REGISTER });
   const [registerErrors, setRegisterErrors] = useState<AuthFieldErrors>({});
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -559,6 +574,13 @@ export default function App() {
     setShowRegPassword(false);
     setShowRegConfirm(false);
     setShowRegisterDobPicker(false);
+  };
+  const resetResetPasswordForm = () => {
+    setResetTokenInput("");
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setShowResetPassword(false);
+    setShowResetConfirmPassword(false);
   };
   const onRegisterDobChange = (_: DateTimePickerEvent, selected?: Date) => {
     setShowRegisterDobPicker(false);
@@ -953,11 +975,35 @@ export default function App() {
       setLogin((prev) => ({ ...prev, email }));
       if (response.resetLink) {
         await Clipboard.setStringAsync(response.resetLink);
+        setResetTokenInput(resetTokenFrom(response.resetLink));
         setInfo("Reset link copied because email delivery is not configured on this server.");
+        setAuthScreen("reset");
       } else {
         setOk(response.message || "Password reset instructions sent.");
+        setAuthScreen("login");
       }
+    });
+
+  const resetPasswordInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to reset password.");
+      const token = resetTokenFrom(resetTokenInput);
+      if (!token) throw new Error("Reset token or link is required.");
+      if (!resetPassword) throw new Error("New password is required.");
+      if (resetPassword.length < 8) throw new Error("Password must be at least 8 characters.");
+      if (!resetConfirmPassword) throw new Error("Confirm password is required.");
+      if (resetPassword !== resetConfirmPassword) throw new Error("Passwords do not match.");
+
+      const response = await api<{ message: string }>(
+        "/auth/reset-password",
+        "POST",
+        undefined,
+        { token, newPassword: resetPassword },
+      );
+      setLogin((prev) => ({ ...prev, email: forgotEmail.trim().toLowerCase(), password: "" }));
+      resetResetPasswordForm();
       setAuthScreen("login");
+      setOk(response.message || "Password has been reset.");
     });
 
   const saveProfileCore = async () => {
@@ -1521,7 +1567,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
                     <Ionicons
-                      name={showLoginPassword ? "eye-outline" : "eye-off-outline"}
+                      name={showLoginPassword ? "eye-off-outline" : "eye-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1680,7 +1726,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowRegPassword((v) => !v)}>
                     <Ionicons
-                      name={showRegPassword ? "eye-outline" : "eye-off-outline"}
+                      name={showRegPassword ? "eye-off-outline" : "eye-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1701,7 +1747,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
                     <Ionicons
-                      name={showRegConfirm ? "eye-outline" : "eye-off-outline"}
+                      name={showRegConfirm ? "eye-off-outline" : "eye-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1746,6 +1792,66 @@ export default function App() {
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
                 <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Link"}</Text>
               </Pressable>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("reset")}>Already have a reset link or token?</Text>
+            </View>
+          )}
+
+          {authScreen === "reset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => { resetResetPasswordForm(); setAuthScreen("login"); }}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Reset Password</Text>
+                  <Text style={s.authSub}>Paste the reset link or token and set a new password</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Reset Link or Token</Text>
+              <Field
+                icon="key-outline"
+                placeholder="Paste reset link or token"
+                value={resetTokenInput}
+                onChangeText={setResetTokenInput}
+              />
+              <Text style={s.formLabel}>New Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Enter new password"
+                value={resetPassword}
+                onChangeText={setResetPassword}
+                secureTextEntry={!showResetPassword}
+                right={
+                  <Pressable onPress={() => setShowResetPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Text style={s.formLabel}>Confirm Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Confirm new password"
+                value={resetConfirmPassword}
+                onChangeText={setResetConfirmPassword}
+                secureTextEntry={!showResetConfirmPassword}
+                right={
+                  <Pressable onPress={() => setShowResetConfirmPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={resetPasswordInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Updating..." : "Reset Password"}</Text>
+              </Pressable>
             </View>
           )}
 
@@ -1759,7 +1865,21 @@ export default function App() {
               </View>
               {showScanner ? (
                 <View style={s.scannerWrap}>
-                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
+                  {cameraPermission?.granted ? (
+                    <CameraView
+                      style={s.scanner}
+                      onBarcodeScanned={scannerLocked ? undefined : onScanned}
+                      barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    />
+                  ) : (
+                    <View style={s.scannerFallback}>
+                      <Ionicons name="camera-outline" size={28} color="#6b7280" />
+                      <Text style={s.scannerFallbackText}>Camera access is required for QR scanning.</Text>
+                      <Pressable style={s.subtleBtn} onPress={openScanner}>
+                        <Text style={s.subtleBtnText}>Grant Camera Access</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               ) : (
                 <>
@@ -1880,7 +2000,21 @@ export default function App() {
                   <Text style={s.viewAll} onPress={() => setShowScanner(false)}>Close</Text>
                 </View>
                 <View style={s.scannerWrap}>
-                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
+                  {cameraPermission?.granted ? (
+                    <CameraView
+                      style={s.scanner}
+                      onBarcodeScanned={scannerLocked ? undefined : onScanned}
+                      barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    />
+                  ) : (
+                    <View style={s.scannerFallback}>
+                      <Ionicons name="camera-outline" size={28} color="#6b7280" />
+                      <Text style={s.scannerFallbackText}>Camera access is required for QR scanning.</Text>
+                      <Pressable style={s.subtleBtn} onPress={openScanner}>
+                        <Text style={s.subtleBtnText}>Grant Camera Access</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               </View>
             )}
@@ -2376,11 +2510,7 @@ export default function App() {
                 ))
               )}
             </View>
-
-            <View style={s.qrActionRow}>
-              <Pressable style={s.subtleBtn} onPress={() => setTab("profile")}><Text style={s.subtleBtnText}>Edit Summaries</Text></Pressable>
-              <Pressable style={s.subtleBtn} onPress={() => setShowQrSheet(true)}><Text style={s.subtleBtnText}>Open QR</Text></Pressable>
-            </View>
+            <Pressable style={s.subtleBtn} onPress={() => setTab("profile")}><Text style={s.subtleBtnText}>Edit Summaries</Text></Pressable>
           </>
         )}
 
@@ -2631,6 +2761,18 @@ const s = StyleSheet.create({
 
   scannerWrap: { borderRadius: 16, overflow: "hidden" },
   scanner: { width: "100%", height: 380 },
+  scannerFallback: {
+    minHeight: 220,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 10,
+  },
+  scannerFallbackText: { color: "#4b5563", textAlign: "center" },
 
   publicCard: {
     borderWidth: 1,
