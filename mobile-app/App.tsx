@@ -1970,9 +1970,6 @@ export default function App() {
                 <Text style={s.brandMiniTitle}>ResQID</Text>
               </View>
               <View style={s.homeActions}>
-                <Pressable style={s.homeIconBtn} onPress={openScanner}>
-                  <Ionicons name="scan-outline" size={22} color="#6b7280" />
-                </Pressable>
                 <Pressable style={s.homeIconBtn} onPress={logout}>
                   <Ionicons name="settings-outline" size={22} color="#6b7280" />
                 </Pressable>
@@ -1981,43 +1978,6 @@ export default function App() {
 
             <Text style={s.homeHello}>Hello, {firstName}</Text>
             <Text style={s.homeSub}>Your emergency profile is ready</Text>
-
-            {!showScanner ? (
-              <Pressable style={[s.quickCard, s.quickCardBlue]} onPress={openScanner}>
-                <View style={[s.sectionIcon, s.quickIconBlue]}>
-                  <Ionicons name="scan-outline" size={20} color="#fff" />
-                </View>
-                <View style={s.quickTextWrap}>
-                  <Text style={s.quickTitle}>Scan Emergency QR</Text>
-                  <Text style={s.quickSub}>Scanner moved here from bottom navigation</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={22} color="#6b7280" />
-              </Pressable>
-            ) : (
-              <View style={s.sectionCard}>
-                <View style={s.contactsHeader}>
-                  <Text style={s.sectionCardTitle}>Scanner</Text>
-                  <Text style={s.viewAll} onPress={() => setShowScanner(false)}>Close</Text>
-                </View>
-                <View style={s.scannerWrap}>
-                  {cameraPermission?.granted ? (
-                    <CameraView
-                      style={s.scanner}
-                      onBarcodeScanned={scannerLocked ? undefined : onScanned}
-                      barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                    />
-                  ) : (
-                    <View style={s.scannerFallback}>
-                      <Ionicons name="camera-outline" size={28} color="#6b7280" />
-                      <Text style={s.scannerFallbackText}>Camera access is required for QR scanning.</Text>
-                      <Pressable style={s.subtleBtn} onPress={openScanner}>
-                        <Text style={s.subtleBtnText}>Grant Camera Access</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
 
             {publicData && (
               <View style={s.publicCard}>
