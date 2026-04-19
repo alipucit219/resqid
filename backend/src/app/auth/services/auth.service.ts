@@ -157,6 +157,8 @@ export class AuthService {
     return {
       message:
         "If an account exists for this email, reset instructions have been sent.",
+      resetLink: result.fallback ? resetLink : undefined,
+      usedFallback: result.fallback,
     };
   }
 

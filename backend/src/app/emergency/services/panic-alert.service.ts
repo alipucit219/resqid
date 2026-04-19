@@ -202,7 +202,7 @@ export class PanicAlertService {
     };
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<any> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -281,7 +281,7 @@ export class PanicAlertService {
     };
   }
 
-  async adminDetail(alertId: string) {
+  async adminDetail(alertId: string): Promise<any> {
     const alert = await this.panicAlertModel
       .findOne({
         _id: this.toObjectId(alertId),

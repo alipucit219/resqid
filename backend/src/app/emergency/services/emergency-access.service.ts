@@ -242,6 +242,7 @@ export class EmergencyAccessService {
             checkupFiles: summary.checkupFiles || [],
             currentMedications: summary.currentMedications || [],
             notes: summary.notes || null,
+            entries: Array.isArray(summary.entries) ? summary.entries : [],
           }
         : null,
       emergencyContacts: contacts.map((contact) => ({

@@ -38,7 +38,7 @@ export class LoginSessionService {
     });
   }
 
-  async deleteSession(id: string) {
+  async deleteSession(id: string): Promise<{ acknowledged: boolean; deletedCount: number }> {
     return await this.sessionModel.deleteOne({ _id: this.toObjectId(id) });
   }
 
@@ -65,4 +65,3 @@ export class LoginSessionService {
     return response.deletedCount ?? 0;
   }
 }
-

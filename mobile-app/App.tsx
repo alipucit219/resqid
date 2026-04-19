@@ -64,7 +64,8 @@ type Profile = {
   dateOfBirth: string;
   gender: string;
 };
-type Summary = {
+type SummaryEntry = {
+  id: string;
   hospitalName: string;
   doctorName: string;
   diseaseStartingYear: string;
@@ -74,8 +75,9 @@ type Summary = {
   currentMedications: string[];
   notes: string;
 };
+type Summary = SummaryEntry;
 type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
-type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Contact[]; qr: QrData | null; savedAt: string };
+type Snapshot = { user: User; profile: Profile; summary: Summary; summaries: Summary[]; contacts: Contact[]; qr: QrData | null; savedAt: string };
 type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
 type QueueRow = { id: number; kind: QueueKind; payload: string };
 
@@ -159,6 +161,7 @@ const EMPTY_PROFILE: Profile = {
   gender: "",
 };
 const EMPTY_SUMMARY: Summary = {
+  id: "",
   hospitalName: "",
   doctorName: "",
   diseaseStartingYear: "",
@@ -200,6 +203,39 @@ const labelCount = (count: number, singular: string, plural?: string) =>
 const isValidPhoneNumber = (value: string) => PHONE_REGEX.test(String(value || "").trim());
 const isValidCnic = (value: string) => CNIC_REGEX.test(String(value || "").trim());
 const isPdfReference = (value: string) => PDF_FILE_REGEX.test(String(value || "").trim());
+const safeId = () => `summary-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const normalizeSummaryEntry = (value: any, fallbackId?: string): Summary => ({
+  id: String(value?.id || fallbackId || safeId()),
+  hospitalName: String(value?.hospitalName || ""),
+  doctorName: String(value?.doctorName || ""),
+  diseaseStartingYear:
+    value?.diseaseStartingYear !== undefined && value?.diseaseStartingYear !== null
+      ? String(value.diseaseStartingYear)
+      : "",
+  treatmentDuration: String(value?.treatmentDuration || ""),
+  treatmentStatus: String(value?.treatmentStatus || ""),
+  checkupFiles: arr(value?.checkupFiles),
+  currentMedications: arr(value?.currentMedications),
+  notes: String(value?.notes || ""),
+});
+const hasSummaryContent = (value: Summary) =>
+  Boolean(
+    value.hospitalName.trim() ||
+      value.doctorName.trim() ||
+      value.diseaseStartingYear.trim() ||
+      value.treatmentDuration.trim() ||
+      value.treatmentStatus.trim() ||
+      value.notes.trim() ||
+      value.checkupFiles.length ||
+      value.currentMedications.length,
+  );
+const sortSummaryEntries = (items: Summary[]) =>
+  [...items].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+const mergeSummaryDraft = (items: Summary[], draft: Summary) => {
+  const cleanItems = items.filter((item) => item.id !== draft.id);
+  if (!hasSummaryContent(draft)) return sortSummaryEntries(cleanItems);
+  return sortSummaryEntries([{ ...draft, id: draft.id || safeId() }, ...cleanItems]);
+};
 const joinOrFallback = (items: string[], fallback = "None") => {
   const clean = items.map((item) => item.trim()).filter(Boolean);
   return clean.length ? clean.join(", ") : fallback;
@@ -386,7 +422,8 @@ export default function App() {
   const [showProfileDobPicker, setShowProfileDobPicker] = useState(false);
 
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
-  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [summary, setSummary] = useState<Summary>({ ...EMPTY_SUMMARY, id: safeId() });
+  const [summaries, setSummaries] = useState<Summary[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [qr, setQr] = useState<QrData | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -408,6 +445,8 @@ export default function App() {
   const [showContactForm, setShowContactForm] = useState(false);
 
   const [showSos, setShowSos] = useState(false);
+  const [showQrSheet, setShowQrSheet] = useState(false);
+  const [showIdentitySheet, setShowIdentitySheet] = useState(false);
   const [panicMsg, setPanicMsg] = useState("");
   const [lastLoc, setLastLoc] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -462,6 +501,39 @@ export default function App() {
       emergencyUrl: normalizeEmergencyUrl(value.emergencyUrl),
     });
   };
+  const scheduleAlertNotification = async (title: string, body: string) => {
+    const settings = await Notifications.getPermissionsAsync();
+    let finalStatus = settings.status;
+    if (finalStatus !== "granted") {
+      finalStatus = (await Notifications.requestPermissionsAsync()).status;
+    }
+    if (finalStatus !== "granted") return;
+
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync(LOCK_CHANNEL_ID, {
+        name: "Lock screen alerts",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: true,
+        ...(Platform.OS === "android" ? { channelId: LOCK_CHANNEL_ID } : {}),
+      },
+      trigger: null,
+    });
+  };
+  const getActiveSummaries = () => mergeSummaryDraft(summaries, summary);
+  const clearSummaryDraft = () => {
+    setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+    setCheckupFileDraft("");
+    setSmDraft("");
+  };
   const resetRegisterForm = () => {
     setRegister({ ...EMPTY_REGISTER });
     setRegisterErrors({});
@@ -504,7 +576,10 @@ export default function App() {
     await updateQCount();
   };
 
-  const toPublic = (snap: Snapshot): PublicData => ({
+  const toPublic = (snap: Snapshot): PublicData => {
+    const visibleSummaries = snap.summaries?.length ? snap.summaries : hasSummaryContent(snap.summary) ? [snap.summary] : [];
+    const primarySummary = visibleSummaries[0] || snap.summary;
+    return {
     user: { fullName: snap.user.fullName },
     medicalProfile: {
       bloodGroup: snap.profile.bloodGroup || null,
@@ -517,12 +592,13 @@ export default function App() {
       emergencyNotes: snap.profile.emergencyNotes || null,
     },
     medicalSummary: {
-      hospitalName: snap.summary.hospitalName || null,
-      doctorName: snap.summary.doctorName || null,
-      diseaseStartingYear: snap.summary.diseaseStartingYear ? Number(snap.summary.diseaseStartingYear) : null,
-      treatmentStatus: snap.summary.treatmentStatus || null,
-      checkupFiles: snap.summary.checkupFiles || [],
-      currentMedications: snap.summary.currentMedications,
+      hospitalName: primarySummary?.hospitalName || null,
+      doctorName: primarySummary?.doctorName || null,
+      diseaseStartingYear: primarySummary?.diseaseStartingYear ? Number(primarySummary.diseaseStartingYear) : null,
+      treatmentStatus: primarySummary?.treatmentStatus || null,
+      checkupFiles: primarySummary?.checkupFiles || [],
+      currentMedications: primarySummary?.currentMedications || [],
+      entries: visibleSummaries,
     },
     emergencyContacts: snap.contacts.map((c) => ({
       name: c.name,
@@ -531,7 +607,8 @@ export default function App() {
       relationship: c.relationship || null,
       isPrimary: !!c.isPrimary,
     })),
-  });
+    };
+  };
 
   const hydrate = async (t: string, currentUser?: User, silent = false) => {
     const [profileRes, summaryRes, contactsRes] = await Promise.all([
@@ -564,23 +641,17 @@ export default function App() {
           },
     );
 
-    setSummary(
-      summaryRes
-        ? {
-            hospitalName: summaryRes.hospitalName || "",
-            doctorName: summaryRes.doctorName || "",
-            diseaseStartingYear:
-              summaryRes.diseaseStartingYear !== undefined && summaryRes.diseaseStartingYear !== null
-                ? String(summaryRes.diseaseStartingYear)
-                : "",
-            treatmentDuration: summaryRes.treatmentDuration || "",
-            treatmentStatus: summaryRes.treatmentStatus || "",
-            checkupFiles: arr(summaryRes.checkupFiles),
-            currentMedications: arr(summaryRes.currentMedications),
-            notes: summaryRes.notes || "",
-          }
-        : EMPTY_SUMMARY,
-    );
+    const nextSummaries = summaryRes?.entries?.length
+      ? sortSummaryEntries(
+          summaryRes.entries.map((entry: any, index: number) =>
+            normalizeSummaryEntry(entry, entry?.id || `summary-${index + 1}`),
+          ),
+        )
+      : summaryRes
+        ? [normalizeSummaryEntry(summaryRes, "summary-1")]
+        : [];
+    setSummaries(nextSummaries);
+    setSummary(nextSummaries[0] || { ...EMPTY_SUMMARY, id: safeId() });
 
     setContacts(contactsRes || []);
 
@@ -687,6 +758,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  }, []);
+
+  useEffect(() => {
     if (!ready || !token || !user) return;
     void hydrate(token, user, true);
   }, [ready, token, user?.id]);
@@ -726,6 +809,7 @@ export default function App() {
       user,
       profile,
       summary,
+      summaries,
       contacts,
       qr,
       savedAt: new Date().toISOString(),
@@ -733,7 +817,7 @@ export default function App() {
     void setKV(db, "snapshot", snap);
     void setKV(db, "qr_data", qr);
     setSnapshot(snap);
-  }, [db, user, profile, summary, contacts, qr]);
+  }, [db, user, profile, summary, summaries, contacts, qr]);
 
   useEffect(() => {
     if (!db) return;
@@ -792,7 +876,7 @@ export default function App() {
       if (!register.dateOfBirth.trim()) nextErrors.dateOfBirth = "Date of birth is required.";
       if (!register.gender.trim()) nextErrors.gender = "Gender is required.";
       if (!register.password) nextErrors.password = "Password is required.";
-      else if (register.password.length < 6) nextErrors.password = "Password must be at least 6 characters.";
+      else if (register.password.length < 8) nextErrors.password = "Password must be at least 8 characters.";
       if (!register.confirmPassword) nextErrors.confirmPassword = "Confirm password is required.";
       else if (register.password !== register.confirmPassword) nextErrors.confirmPassword = "Passwords do not match.";
       setRegisterErrors(nextErrors);
@@ -840,11 +924,21 @@ export default function App() {
         throw new Error("Please enter a valid email.");
       }
 
-      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, { email });
+      const response = await api<{ message: string; resetLink?: string; usedFallback?: boolean }>(
+        "/auth/forgot-password",
+        "POST",
+        undefined,
+        { email },
+      );
       setForgotEmailError("");
       setLogin((prev) => ({ ...prev, email }));
+      if (response.resetLink) {
+        await Clipboard.setStringAsync(response.resetLink);
+        setInfo("Reset link copied because email delivery is not configured on this server.");
+      } else {
+        setOk(response.message || "Password reset instructions sent.");
+      }
       setAuthScreen("login");
-      setOk(response.message || "Password reset instructions sent.");
     });
 
   const saveProfileCore = async () => {
@@ -879,25 +973,46 @@ export default function App() {
   };
 
   const saveSummaryCore = async () => {
-    const parsedYear = summary.diseaseStartingYear.trim()
-      ? toNumericYear(summary.diseaseStartingYear.trim())
-      : null;
-    if (summary.diseaseStartingYear.trim() && parsedYear === null) {
-      throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+    const entries = getActiveSummaries();
+    for (const item of entries) {
+      const parsedYear = item.diseaseStartingYear.trim() ? toNumericYear(item.diseaseStartingYear.trim()) : null;
+      if (item.diseaseStartingYear.trim() && parsedYear === null) {
+        throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+      }
+      if (item.checkupFiles.some((file) => !isPdfReference(file))) {
+        throw new Error("Checkup files must be PDF files (ending with .pdf).");
+      }
     }
-    if (summary.checkupFiles.some((item) => !isPdfReference(item))) {
-      throw new Error("Checkup files must be PDF files (ending with .pdf).");
-    }
+    const primary = entries[0];
     const payload = {
-      hospitalName: summary.hospitalName || undefined,
-      doctorName: summary.doctorName || undefined,
-      diseaseStartingYear: parsedYear ?? undefined,
-      treatmentDuration: summary.treatmentDuration || undefined,
-      treatmentStatus: summary.treatmentStatus || undefined,
-      checkupFiles: summary.checkupFiles,
-      currentMedications: summary.currentMedications,
-      notes: summary.notes || undefined,
+      hospitalName: primary?.hospitalName || undefined,
+      doctorName: primary?.doctorName || undefined,
+      diseaseStartingYear: primary?.diseaseStartingYear.trim()
+        ? toNumericYear(primary.diseaseStartingYear.trim()) ?? undefined
+        : undefined,
+      treatmentDuration: primary?.treatmentDuration || undefined,
+      treatmentStatus: primary?.treatmentStatus || undefined,
+      checkupFiles: primary?.checkupFiles || [],
+      currentMedications: primary?.currentMedications || [],
+      notes: primary?.notes || undefined,
+      entries: entries.map((item) => ({
+        id: item.id,
+        hospitalName: item.hospitalName || undefined,
+        doctorName: item.doctorName || undefined,
+        diseaseStartingYear: item.diseaseStartingYear.trim()
+          ? toNumericYear(item.diseaseStartingYear.trim()) ?? undefined
+          : undefined,
+        treatmentDuration: item.treatmentDuration || undefined,
+        treatmentStatus: item.treatmentStatus || undefined,
+        checkupFiles: item.checkupFiles,
+        currentMedications: item.currentMedications,
+        notes: item.notes || undefined,
+      })),
     };
+    setSummaries(entries);
+    if (entries[0]) {
+      setSummary(entries[0]);
+    }
     if (isOnline) {
       try {
         await api("/me/medical-summary", "PUT", token, payload);
@@ -1025,10 +1140,14 @@ export default function App() {
       };
       if (isOnline) {
         try {
-          await api("/me/panic-alerts", "POST", token, payload);
+          const response = await api<{ warning?: string }>("/me/panic-alerts", "POST", token, payload);
           setShowSos(false);
           setPanicMsg("");
-          setOk("Emergency alert sent.");
+          await scheduleAlertNotification(
+            "ResQID emergency alert",
+            response?.warning || "Your emergency alert was processed.",
+          );
+          setOk(response?.warning || "Emergency alert sent.");
           return;
         } catch (e) {
           if (!netErr(e)) throw e;
@@ -1038,6 +1157,7 @@ export default function App() {
       await queue("panic_alert", payload);
       setShowSos(false);
       setPanicMsg("");
+      await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
       setInfo("SOS queued offline and will sync automatically.");
     });
 
@@ -1095,8 +1215,12 @@ export default function App() {
     const scanned = tokenFrom(result.data || "");
     setPublicInput(scanned);
     void run(async () => {
-      await resolvePublic(scanned);
-      setOk("QR scanned successfully.");
+      try {
+        await resolvePublic(scanned);
+        setOk("QR scanned successfully.");
+      } finally {
+        setScannerLocked(false);
+      }
     });
   };
 
@@ -1143,6 +1267,91 @@ export default function App() {
       checkupFiles: [...prev.checkupFiles, value],
     }));
     setCheckupFileDraft("");
+  };
+
+  const uploadCheckupFile = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to upload a PDF.");
+      let pickerModule: any = null;
+      try {
+        pickerModule = require("expo-document-picker");
+      } catch {
+        throw new Error("PDF picker is not installed in this local app build yet.");
+      }
+      const picked = await pickerModule.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (picked.canceled || !picked.assets?.length) return;
+      const file = picked.assets[0];
+      if (!isPdfReference(file.name || file.uri || "")) {
+        throw new Error("Only PDF files are allowed.");
+      }
+
+      const form = new FormData();
+      form.append("file", {
+        uri: file.uri,
+        name: file.name || `checkup-${Date.now()}.pdf`,
+        type: "application/pdf",
+      } as any);
+
+      const res = await fetch(`${ACTIVE_API}/me/medical-summary/checkup-files`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to upload checkup PDF.");
+      }
+
+      setSummary((prev) => ({
+        ...prev,
+        checkupFiles: [...prev.checkupFiles, String(data?.url || "").trim()].filter(Boolean),
+      }));
+      setOk("Checkup PDF uploaded.");
+    });
+
+  const downloadCheckupFile = (value: string) =>
+    run(async () => {
+      const url = String(value || "").trim();
+      if (!url) throw new Error("No PDF URL available.");
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error("Cannot open this PDF on this device.");
+      await Linking.openURL(url);
+    });
+
+  const saveSummaryDraft = () => {
+    const nextDraft = { ...summary, id: summary.id || safeId() };
+    if (!hasSummaryContent(nextDraft)) {
+      pushToast("Add summary details before saving an entry.", "error");
+      return;
+    }
+    const editingExisting = summaries.some((item) => item.id === nextDraft.id);
+    setSummaries((prev) => mergeSummaryDraft(prev, nextDraft));
+    setSummary(nextDraft);
+    setOk(editingExisting ? "Summary entry updated." : "Summary entry added.");
+  };
+
+  const editSummaryEntry = (entry: Summary) => {
+    setSummary(entry);
+    setCheckupFileDraft("");
+    setSmDraft("");
+    setTab("profile");
+    requestAnimationFrame(() => {
+      mainScrollRef.current?.scrollTo({ y: 900, animated: true });
+    });
+  };
+
+  const deleteSummaryEntry = (id: string) => {
+    setSummaries((prev) => prev.filter((item) => item.id !== id));
+    if (summary.id === id) {
+      clearSummaryDraft();
+    }
+    setInfo("Summary entry removed.");
   };
 
   const removeCheckupFile = (value: string) => {
@@ -1225,7 +1434,8 @@ export default function App() {
     setPublicData(null);
     setPublicInput("");
     setProfile(EMPTY_PROFILE);
-    setSummary(EMPTY_SUMMARY);
+    setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+    setSummaries([]);
     setAuthScreen("login");
     setTab("home");
     setIsLocked(false);
@@ -1234,6 +1444,7 @@ export default function App() {
   };
 
   const visibleEmergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
+  const isEditingSummaryEntry = summaries.some((item) => item.id === summary.id);
 
   if (!ready) {
     return (
@@ -1291,7 +1502,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
                     <Ionicons
-                      name={showLoginPassword ? "eye-off-outline" : "eye-outline"}
+                      name={showLoginPassword ? "eye-outline" : "eye-off-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1374,7 +1585,11 @@ export default function App() {
                 placeholder="12345-1234567-1"
                 value={register.cnic}
                 onChangeText={(v) => {
-                  setRegister((p) => ({ ...p, cnic: v.replace(/[^0-9-]/g, "").slice(0, 15) }));
+                  const digits = v.replace(/\D/g, "").slice(0, 13);
+                  const formatted = [digits.slice(0, 5), digits.slice(5, 12), digits.slice(12, 13)]
+                    .filter(Boolean)
+                    .join("-");
+                  setRegister((p) => ({ ...p, cnic: formatted }));
                   setRegisterErrors((p) => ({ ...p, cnic: undefined }));
                 }}
                 keyboardType="number-pad"
@@ -1446,7 +1661,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowRegPassword((v) => !v)}>
                     <Ionicons
-                      name={showRegPassword ? "eye-off-outline" : "eye-outline"}
+                      name={showRegPassword ? "eye-outline" : "eye-off-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1467,7 +1682,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
                     <Ionicons
-                      name={showRegConfirm ? "eye-off-outline" : "eye-outline"}
+                      name={showRegConfirm ? "eye-outline" : "eye-off-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1651,12 +1866,6 @@ export default function App() {
               </View>
             )}
 
-            <View style={s.identityCard}>
-              <Text style={s.sectionCardTitle}>Identity Details</Text>
-              <Text style={s.identityLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
-              <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
-              <Text style={s.identityLine}>Address: {profile.address || user?.address || "Not set"}</Text>
-            </View>
             {publicData && (
               <View style={s.publicCard}>
                 <Text style={s.publicName}>{publicData.user?.fullName || "Scanned User"}</Text>
@@ -1698,35 +1907,78 @@ export default function App() {
             </View>
 
             <Text style={s.sectionTitle}>Quick Actions</Text>
-            <Pressable style={[s.quickCard, s.quickCardPink]} onPress={() => setTab("summary")}>
+            <Pressable style={[s.quickCard, s.quickCardPink]} onPress={() => setShowQrSheet((prev) => !prev)}>
               <View style={[s.sectionIcon, s.quickIconRed]}>
-                <Ionicons name="document-text-outline" size={20} color="#fff" />
+                <Ionicons name="qr-code-outline" size={20} color="#fff" />
               </View>
               <View style={s.quickTextWrap}>
-                <Text style={s.quickTitle}>Summary</Text>
-                <Text style={s.quickSub}>View all profile and treatment details</Text>
+                <Text style={s.quickTitle}>My QR Code</Text>
+                <Text style={s.quickSub}>Show, copy, or regenerate your emergency QR</Text>
               </View>
               <Ionicons name="chevron-forward" size={22} color="#6b7280" />
             </Pressable>
 
             <Pressable
               style={[s.quickCard, s.quickCardBlue]}
-              onPress={() =>
-                Alert.alert(
-                  "Emergency View",
-                  `Name: ${user.fullName}\nBlood Group: ${profile.bloodGroup || "Not set"}\nContacts: ${contacts.length}`,
-                )
-              }
+              onPress={() => setShowIdentitySheet((prev) => !prev)}
             >
               <View style={[s.sectionIcon, s.quickIconBlue]}>
-                <Ionicons name="shield-outline" size={20} color="#fff" />
+                <Ionicons name="person-outline" size={20} color="#fff" />
               </View>
               <View style={s.quickTextWrap}>
-                <Text style={s.quickTitle}>Emergency View</Text>
-                <Text style={s.quickSub}>Preview lock-screen mode</Text>
+                <Text style={s.quickTitle}>Identity Details</Text>
+                <Text style={s.quickSub}>Quick access to CNIC, age, and address</Text>
               </View>
               <Ionicons name="chevron-forward" size={22} color="#6b7280" />
             </Pressable>
+
+            {showQrSheet && (
+              <View style={s.sectionCard}>
+                <View style={s.contactsHeader}>
+                  <Text style={s.sectionCardTitle}>Medical QR</Text>
+                  <Text style={s.viewAll} onPress={() => setShowQrSheet(false)}>Close</Text>
+                </View>
+                <View style={s.qrCard}>
+                  {qr?.qrCodeDataUrl ? (
+                    <Image source={{ uri: qr.qrCodeDataUrl }} style={s.qrImage} />
+                  ) : (
+                    <Text style={s.qrPlaceholder}>No QR generated yet</Text>
+                  )}
+                </View>
+                <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
+                <View style={s.urlCard}>
+                  <Text style={s.urlLabel}>Emergency URL</Text>
+                  <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
+                  <View style={s.urlActionRow}>
+                    <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={copyEmergencyUrl}>
+                      <Ionicons name="copy-outline" size={18} color="#111827" />
+                      <Text style={s.ghostBtnText}>Copy Link</Text>
+                    </Pressable>
+                    <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={openEmergencyUrl}>
+                      <Ionicons name="open-outline" size={18} color="#111827" />
+                      <Text style={s.ghostBtnText}>Open</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <Pressable style={s.subtleBtn} onPress={regenQr}>
+                  <Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {showIdentitySheet && (
+              <View style={s.identityCard}>
+                <View style={s.contactsHeader}>
+                  <Text style={s.sectionCardTitle}>Identity Details</Text>
+                  <Text style={s.viewAll} onPress={() => setShowIdentitySheet(false)}>Close</Text>
+                </View>
+                <Text style={s.identityLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
+                <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
+                <Text style={s.identityLine}>Address: {profile.address || user?.address || "Not set"}</Text>
+                <Text style={s.identityLine}>Date of Birth: {profile.dateOfBirth || user?.dateOfBirth || "Not set"}</Text>
+                <Text style={s.identityLine}>Gender: {profile.gender || user?.gender || "Not set"}</Text>
+              </View>
+            )}
 
             <View style={s.contactsHeader}>
               <Text style={s.sectionTitle}>Emergency Contacts</Text>
@@ -1880,7 +2132,13 @@ export default function App() {
                 style={s.inlineInput}
                 placeholder="12345-1234567-1"
                 value={profile.cnic}
-                onChangeText={(v) => setProfile((p) => ({ ...p, cnic: v }))}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, "").slice(0, 13);
+                  const formatted = [digits.slice(0, 5), digits.slice(5, 12), digits.slice(12, 13)]
+                    .filter(Boolean)
+                    .join("-");
+                  setProfile((p) => ({ ...p, cnic: formatted }));
+                }}
               />
               <Text style={s.formLabel}>Age</Text>
               <TextInput
@@ -1975,6 +2233,7 @@ export default function App() {
 
             <View style={[s.sectionCard, s.sectionCardSoft]}>
               <Text style={s.sectionCardTitle}>Treatment Summary</Text>
+              <Text style={s.sectionHint}>You can save more than one treatment summary entry.</Text>
               <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
               <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
               <TextInput
@@ -1992,6 +2251,9 @@ export default function App() {
                 <TextInput style={s.inlineInput} placeholder="Checkup PDF URL or name (.pdf)" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
                 <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
               </View>
+              <Pressable style={s.subtleBtn} onPress={uploadCheckupFile}>
+                <Text style={s.subtleBtnText}>Upload Checkup PDF</Text>
+              </Pressable>
               <View style={s.listWrap}>
                 {summary.checkupFiles.length === 0 ? (
                   <Text style={s.sectionHint}>No checkup files added</Text>
@@ -1999,6 +2261,9 @@ export default function App() {
                   summary.checkupFiles.map((item, idx) => (
                     <View key={`${item}-${idx}`} style={s.itemPill}>
                       <Text style={s.itemPillText}>{item}</Text>
+                      <Pressable style={s.itemPillAction} onPress={() => downloadCheckupFile(item)}>
+                        <Ionicons name="download-outline" size={14} color="#2563eb" />
+                      </Pressable>
                       <Pressable style={s.itemPillRemove} onPress={() => removeCheckupFile(item)}>
                         <Ionicons name="close" size={14} color="#b91c1c" />
                       </Pressable>
@@ -2025,6 +2290,31 @@ export default function App() {
                 )}
               </View>
               <TextInput style={s.textArea} multiline placeholder="Notes" value={summary.notes} onChangeText={(v) => setSummary((p) => ({ ...p, notes: v }))} />
+              <View style={s.summaryRow}>
+                <Pressable style={[s.primaryBtn, s.flexOne]} onPress={saveSummaryDraft}>
+                  <Text style={s.primaryBtnText}>{isEditingSummaryEntry ? "Update Entry" : "Add Entry"}</Text>
+                </Pressable>
+                <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={clearSummaryDraft}>
+                  <Text style={s.subtleBtnText}>Clear Form</Text>
+                </Pressable>
+              </View>
+              <View style={s.listColumn}>
+                {getActiveSummaries().length === 0 ? (
+                  <Text style={s.sectionHint}>No treatment summaries added</Text>
+                ) : (
+                  getActiveSummaries().map((item, idx) => (
+                    <View key={item.id || `${item.hospitalName}-${idx}`} style={s.savedSummaryCard}>
+                      <Text style={s.savedSummaryTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                      <Text style={s.savedSummaryLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                      <Text style={s.savedSummaryLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                      <View style={s.contactActions}>
+                        <Text style={s.contactAction} onPress={() => editSummaryEntry(item)}>Edit</Text>
+                        <Text style={s.contactAction} onPress={() => deleteSummaryEntry(item.id)}>Delete</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
             </View>
           </>
         )}
@@ -2049,47 +2339,28 @@ export default function App() {
             </View>
 
             <View style={s.sectionCard}>
-              <Text style={s.sectionCardTitle}>Treatment Summary</Text>
-              <Text style={s.publicLine}>Hospital: {summary.hospitalName || "Not set"}</Text>
-              <Text style={s.publicLine}>Doctor: {summary.doctorName || "Not set"}</Text>
-              <Text style={s.publicLine}>Disease Starting Year: {summary.diseaseStartingYear || "Not set"}</Text>
-              <Text style={s.publicLine}>Duration: {summary.treatmentDuration || "Not set"}</Text>
-              <Text style={s.publicLine}>Status: {summary.treatmentStatus || "Not set"}</Text>
-              <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(summary.checkupFiles)}</Text>
-              <Text style={s.publicLine}>Current Medications: {joinOrFallback(summary.currentMedications)}</Text>
-              <Text style={s.publicLine}>Notes: {summary.notes || "Not set"}</Text>
-            </View>
-
-            <View style={s.qrTop}><Text style={s.sectionCardTitle}>Medical QR</Text></View>
-            <View style={s.qrAvatar}><Text style={s.qrAvatarText}>{firstName.slice(0, 1).toUpperCase()}</Text></View>
-            <Text style={s.qrName}>{user.fullName}</Text>
-            <Text style={s.qrSub}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
-
-            <View style={s.qrCard}>
-              {qr?.qrCodeDataUrl ? (
-                <Image source={{ uri: qr.qrCodeDataUrl }} style={s.qrImage} />
+              <Text style={s.sectionCardTitle}>Treatment Summaries</Text>
+              {getActiveSummaries().length === 0 ? (
+                <Text style={s.publicLine}>No treatment summary added.</Text>
               ) : (
-                <Text style={s.qrPlaceholder}>No QR generated yet</Text>
+                getActiveSummaries().map((item, idx) => (
+                  <View key={item.id || `${item.hospitalName}-${idx}`} style={s.summaryListBlock}>
+                    <Text style={s.summaryListTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                    <Text style={s.publicLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                    <Text style={s.publicLine}>Disease Starting Year: {item.diseaseStartingYear || "Not set"}</Text>
+                    <Text style={s.publicLine}>Duration: {item.treatmentDuration || "Not set"}</Text>
+                    <Text style={s.publicLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                    <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(item.checkupFiles)}</Text>
+                    <Text style={s.publicLine}>Current Medications: {joinOrFallback(item.currentMedications)}</Text>
+                    <Text style={s.publicLine}>Notes: {item.notes || "Not set"}</Text>
+                  </View>
+                ))
               )}
-            </View>
-            <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
-            <View style={s.urlCard}>
-              <Text style={s.urlLabel}>Emergency URL</Text>
-              <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
-              <View style={s.urlActionRow}>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={copyEmergencyUrl}>
-                  <Ionicons name="copy-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Copy Link</Text>
-                </Pressable>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={openEmergencyUrl}>
-                  <Ionicons name="open-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Open in Browser</Text>
-                </Pressable>
-              </View>
             </View>
 
             <View style={s.qrActionRow}>
-              <Pressable style={s.subtleBtn} onPress={regenQr}><Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text></Pressable>
+              <Pressable style={s.subtleBtn} onPress={() => setTab("profile")}><Text style={s.subtleBtnText}>Edit Summaries</Text></Pressable>
+              <Pressable style={s.subtleBtn} onPress={() => setShowQrSheet(true)}><Text style={s.subtleBtnText}>Open QR</Text></Pressable>
             </View>
           </>
         )}
@@ -2495,6 +2766,14 @@ const s = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#fee2e2",
   },
+  itemPillAction: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe",
+  },
   textArea: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -2508,6 +2787,10 @@ const s = StyleSheet.create({
   compactTextArea: { minHeight: 62 },
   sectionCardSoft: { backgroundColor: "#fafafa" },
   summaryRow: { flexDirection: "row", gap: 8 },
+  listColumn: { gap: 8 },
+  savedSummaryCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, backgroundColor: "#fff", padding: 12, gap: 4 },
+  savedSummaryTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
+  savedSummaryLine: { color: "#475569", fontSize: 13 },
   securityInfo: { color: "#334155", fontSize: 14 },
 
   qrTop: { alignItems: "center" },
@@ -2527,6 +2810,8 @@ const s = StyleSheet.create({
   qrActionRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   ghostBtn: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, minHeight: 44, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, backgroundColor: "#fff" },
   ghostBtnText: { color: "#111827", fontWeight: "700" },
+  summaryListBlock: { borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 10, marginTop: 4, gap: 2 },
+  summaryListTitle: { fontSize: 15, fontWeight: "800", color: "#111827", marginBottom: 2 },
 
   contactsTip: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 20, padding: 16, backgroundColor: "#f1f5f9", marginTop: 6 },
   contactsTipText: { color: "#334155", fontSize: 18 / 1.2 },
