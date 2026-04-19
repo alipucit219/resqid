@@ -13,6 +13,7 @@ import {
   LoginDto,
   RegisterDto,
   ResetPasswordDto,
+  VerifyResetCodeDto,
 } from "../dtos";
 import { AuthService } from "../services/auth.service";
 import { ApiBearerAuth } from "@nestjs/swagger";
@@ -51,7 +52,7 @@ export class AuthController {
   }
 
   @Public()
-  @ApiOperation({ description: "Request a password reset link" })
+  @ApiOperation({ description: "Request a password reset code" })
   @HttpCode(HttpStatus.OK)
   @Post("forgot-password")
   async forgotPassword(@Body() body: ForgotPasswordDto) {
@@ -59,7 +60,15 @@ export class AuthController {
   }
 
   @Public()
-  @ApiOperation({ description: "Reset password using a valid token" })
+  @ApiOperation({ description: "Verify password reset code" })
+  @HttpCode(HttpStatus.OK)
+  @Post("verify-reset-code")
+  async verifyResetCode(@Body() body: VerifyResetCodeDto) {
+    return await this.authService.verifyResetCode(body.email, body.code);
+  }
+
+  @Public()
+  @ApiOperation({ description: "Reset password using a valid reset code" })
   @HttpCode(HttpStatus.OK)
   @Post("reset-password")
   async resetPassword(@Body() body: ResetPasswordDto) {

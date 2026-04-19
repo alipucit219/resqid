@@ -38,6 +38,9 @@ export class ConfigService {
       DEFAULT_ACCOUNT_FULL_NAME: Joi.string().trim().min(1).required(),
       DEFAULT_ACCOUNT_EMAIL: Joi.string().email().required(),
       DEFAULT_ACCOUNT_PASSWORD: Joi.string().trim().min(8).required(),
+      SENDGRID_API_KEY: Joi.string().trim().allow("").optional(),
+      SENDGRID_FROM: Joi.string().email().allow("").optional(),
+      SMTP_SERVICE: Joi.string().trim().allow("").optional(),
       SMTP_HOST: Joi.string().trim().allow("").optional(),
       SMTP_PORT: Joi.number().port().empty("").optional(),
       SMTP_USER: Joi.string().trim().allow("").optional(),
@@ -125,25 +128,53 @@ export class ConfigService {
     };
   }
 
-  isSmtpConfigured(): boolean {
+  isSendGridConfigured(): boolean {
     return Boolean(
-      this.get("SMTP_HOST") &&
-        this.get("SMTP_PORT") &&
-        this.get("SMTP_USER") &&
-        this.get("SMTP_PASSWORD") &&
-        this.get("SMTP_FROM"),
+      (this.get("SENDGRID_API_KEY") || "").toString().trim() &&
+        (this.get("SENDGRID_FROM") || "").toString().trim(),
+    );
+  }
+
+  getSendGridConfig() {
+    return {
+      apiKey: (this.get("SENDGRID_API_KEY") || "").toString().trim(),
+      from: (this.get("SENDGRID_FROM") || "").toString().trim(),
+    };
+  }
+
+  isSmtpConfigured(): boolean {
+    const hasService = Boolean((this.get("SMTP_SERVICE") || "").toString().trim());
+    const hasHost = Boolean(this.get("SMTP_HOST"));
+    const hasPort = Boolean(this.get("SMTP_PORT"));
+    const hasFrom = Boolean(this.get("SMTP_FROM"));
+    const hasUser = Boolean(this.get("SMTP_USER"));
+    const hasPassword = Boolean(this.get("SMTP_PASSWORD"));
+    const hasAuth = hasUser && hasPassword;
+    const hasPartialAuth = hasUser !== hasPassword;
+
+    if (hasPartialAuth) {
+      return false;
+    }
+
+    return Boolean(
+      hasFrom &&
+        ((hasService && (!hasHost || hasPort || hasAuth || !hasPort)) || (hasHost && hasPort)),
     );
   }
 
   getSmtpConfig() {
     return {
+      service: (this.get("SMTP_SERVICE") || "").toString().trim() || undefined,
       host: this.get("SMTP_HOST"),
       port: Number(this.get("SMTP_PORT") || 0),
       secure: Boolean(this.get("SMTP_SECURE")),
-      auth: {
-        user: this.get("SMTP_USER"),
-        pass: this.get("SMTP_PASSWORD"),
-      },
+      auth:
+        this.get("SMTP_USER") && this.get("SMTP_PASSWORD")
+          ? {
+              user: this.get("SMTP_USER"),
+              pass: this.get("SMTP_PASSWORD"),
+            }
+          : undefined,
       from: this.get("SMTP_FROM"),
     };
   }

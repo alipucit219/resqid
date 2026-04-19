@@ -25,7 +25,7 @@ import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
-type AuthScreen = "login" | "register" | "forgot" | "reset" | "public";
+type AuthScreen = "login" | "register" | "forgot" | "verifyReset" | "reset" | "public";
 type Tab = "home" | "profile" | "summary" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
@@ -113,14 +113,14 @@ const resolveApiBases = () => {
     Platform.OS === "web"
       ? "http://localhost:8000"
       : Platform.OS === "android"
-        ? inferredBase || "http://10.0.2.2:8000"
+        ? inferredBase || "http://192.168.10.4:8000"
         : inferredBase || "http://localhost:8000";
   const priority =
     Platform.OS === "web"
       ? [webBase, nativeBase, fallbackBase]
       : Platform.OS === "ios"
         ? [inferredBase, iosBase, nativeBase, fallbackBase]
-        : [inferredBase, androidBase, nativeBase, "http://10.0.2.2:8000", fallbackBase];
+        : [inferredBase, androidBase, nativeBase, "http://192.168.10.4:8000", fallbackBase];
 
   const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, inferredBase, fallbackBase]
     .map((item) => String(item || "").trim())
@@ -221,16 +221,6 @@ const tokenFrom = (v: string) =>
   v.includes("/emergency-access/")
     ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
     : v.trim();
-const resetTokenFrom = (v: string) => {
-  const raw = String(v || "").trim();
-  if (!raw) return "";
-  try {
-    const parsed = new URL(raw);
-    return parsed.searchParams.get("token")?.trim() || raw;
-  } catch {
-    return raw.includes("token=") ? raw.split("token=")[1].split("&")[0].split("#")[0].trim() : raw;
-  }
-};
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
 const netErr = (e: unknown) =>
   /network request failed|fetch failed|failed to fetch|abort|timeout|timed out/i.test(errMsg(e));
@@ -449,7 +439,7 @@ export default function App() {
   const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotEmailError, setForgotEmailError] = useState("");
-  const [resetTokenInput, setResetTokenInput] = useState("");
+  const [resetCodeInput, setResetCodeInput] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -583,7 +573,7 @@ export default function App() {
     setShowRegisterDobPicker(false);
   };
   const resetResetPasswordForm = () => {
-    setResetTokenInput("");
+    setResetCodeInput("");
     setResetPassword("");
     setResetConfirmPassword("");
     setShowResetPassword(false);
@@ -972,7 +962,7 @@ export default function App() {
         throw new Error("Please enter a valid email.");
       }
 
-      const response = await api<{ message: string; resetLink?: string; usedFallback?: boolean }>(
+      const response = await api<{ message: string; resetCode?: string; usedFallback?: boolean }>(
         "/auth/forgot-password",
         "POST",
         undefined,
@@ -980,22 +970,41 @@ export default function App() {
       );
       setForgotEmailError("");
       setLogin((prev) => ({ ...prev, email }));
-      if (response.resetLink) {
-        await Clipboard.setStringAsync(response.resetLink);
-        setResetTokenInput(resetTokenFrom(response.resetLink));
-        setInfo("Reset link copied because email delivery is not configured on this server.");
-        setAuthScreen("reset");
-      } else {
-        setOk(response.message || "Password reset instructions sent.");
-        setAuthScreen("login");
+      if (response.resetCode) {
+        await Clipboard.setStringAsync(response.resetCode);
+        setResetCodeInput(response.resetCode);
+        setInfo("Reset code copied because email delivery is not configured on this server.");
       }
+      setOk(response.message || "Password reset code sent.");
+      setAuthScreen("verifyReset");
+    });
+
+  const verifyResetCodeInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to verify reset code.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
+      if (!/^\d{6}$/.test(code)) throw new Error("Reset code must be 6 digits.");
+
+      const response = await api<{ message: string }>(
+        "/auth/verify-reset-code",
+        "POST",
+        undefined,
+        { email, code },
+      );
+      setOk(response.message || "Reset code verified.");
+      setAuthScreen("reset");
     });
 
   const resetPasswordInApp = () =>
     run(async () => {
       if (!isOnline) throw new Error("Internet is required to reset password.");
-      const token = resetTokenFrom(resetTokenInput);
-      if (!token) throw new Error("Reset token or link is required.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
       if (!resetPassword) throw new Error("New password is required.");
       if (resetPassword.length < 8) throw new Error("Password must be at least 8 characters.");
       if (!resetConfirmPassword) throw new Error("Confirm password is required.");
@@ -1005,7 +1014,7 @@ export default function App() {
         "/auth/reset-password",
         "POST",
         undefined,
-        { token, newPassword: resetPassword },
+        { email, code, newPassword: resetPassword },
       );
       setLogin((prev) => ({ ...prev, email: forgotEmail.trim().toLowerCase(), password: "" }));
       resetResetPasswordForm();
@@ -1779,7 +1788,7 @@ export default function App() {
                 </Pressable>
                 <View>
                   <Text style={s.authTitle}>Forgot Password</Text>
-                  <Text style={s.authSub}>We will send reset instructions to your email</Text>
+                  <Text style={s.authSub}>We will send a 6-digit code to your email</Text>
                 </View>
               </View>
 
@@ -1796,31 +1805,50 @@ export default function App() {
               />
               {!!forgotEmailError && <Text style={s.fieldError}>{forgotEmailError}</Text>}
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
-                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Link"}</Text>
+                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Code"}</Text>
               </Pressable>
-              <Text style={s.linkSoft} onPress={() => setAuthScreen("reset")}>Already have a reset link or token?</Text>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("verifyReset")}>Already have a reset code?</Text>
+            </View>
+          )}
+
+          {authScreen === "verifyReset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("forgot")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Verify Code</Text>
+                  <Text style={s.authSub}>Enter the 6-digit code sent to your email</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Reset Code</Text>
+              <Field
+                icon="key-outline"
+                placeholder="Enter 6-digit code"
+                value={resetCodeInput}
+                onChangeText={(v) => setResetCodeInput(v.replace(/\D/g, "").slice(0, 6))}
+                keyboardType="number-pad"
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={verifyResetCodeInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Checking..." : "Verify Code"}</Text>
+              </Pressable>
             </View>
           )}
 
           {authScreen === "reset" && (
             <View style={s.formWrap}>
               <View style={s.authTop}>
-                <Pressable onPress={() => { resetResetPasswordForm(); setAuthScreen("login"); }}>
+                <Pressable onPress={() => setAuthScreen("verifyReset")}>
                   <Ionicons name="chevron-back" size={24} color="#6b7280" />
                 </Pressable>
                 <View>
-                  <Text style={s.authTitle}>Reset Password</Text>
-                  <Text style={s.authSub}>Paste the reset link or token and set a new password</Text>
+                  <Text style={s.authTitle}>New Password</Text>
+                  <Text style={s.authSub}>Set your new password after code verification</Text>
                 </View>
               </View>
 
-              <Text style={s.formLabel}>Reset Link or Token</Text>
-              <Field
-                icon="key-outline"
-                placeholder="Paste reset link or token"
-                value={resetTokenInput}
-                onChangeText={setResetTokenInput}
-              />
               <Text style={s.formLabel}>New Password</Text>
               <Field
                 icon="lock-closed-outline"
