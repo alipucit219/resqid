@@ -3,8 +3,9 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  NotFoundException,
 } from "@nestjs/common";
-import { createHash, randomInt } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { HashService, EmailService } from "../../../shared/services";
 import {
   ChangePasswordDto,
@@ -30,22 +31,6 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
   ) {}
-
-  private async findValidResetUser(email: string, code: string) {
-    const hashedCode = createHash("sha256").update(code).digest("hex");
-    const user = await this.userService.findByEmail(email, true);
-
-    if (
-      !user ||
-      user.resetTokenHash !== hashedCode ||
-      !user.resetTokenExpiry ||
-      user.resetTokenExpiry < new Date()
-    ) {
-      throw new BadRequestException("Reset code is invalid or expired.");
-    }
-
-    return user;
-  }
 
   async isPasswordValid(plainPassword: string, hashedPassword: string) {
     return await this.hashService.check(plainPassword, hashedPassword);
@@ -149,52 +134,40 @@ export class AuthService {
       };
     }
 
-    const rawCode = String(randomInt(0, 1_000_000)).padStart(6, "0");
-    const hashedToken = createHash("sha256").update(rawCode).digest("hex");
+    const rawToken = randomBytes(32).toString("hex");
+    const hashedToken = createHash("sha256").update(rawToken).digest("hex");
     const expiry = new Date(
       Date.now() + this.configService.getResetTokenExpiryMinutes() * 60 * 1000,
     );
 
     await this.userService.setResetToken(user.id, hashedToken, expiry);
 
+    const resetLink = `${this.configService.getFrontendUrl().replace(/\/$/, "")}/reset-password?token=${rawToken}`;
     const emailPayload = {
       to: user.email,
-      subject: "Your password reset code",
-      text: [
-        "Use this code to reset your password:",
-        rawCode,
-        "",
-        `This code will expire in ${this.configService.getResetTokenExpiryMinutes()} minutes.`,
-      ].join("\n"),
-      html: [
-        "<p>Use this code to reset your password:</p>",
-        `<p><strong style="font-size: 24px; letter-spacing: 4px;">${rawCode}</strong></p>`,
-        `<p>This code will expire in ${this.configService.getResetTokenExpiryMinutes()} minutes.</p>`,
-      ].join(""),
+      subject: "Reset your password",
+      text: `Use this link to reset your password: ${resetLink}`,
+      html: `<p>Use the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p>`,
     };
 
     const result = await this.emailService.sendMail(emailPayload);
     if (result.fallback) {
-      this.logger.warn(`Password reset fallback code for ${user.email}: ${rawCode}`);
+      this.logger.warn(`Password reset fallback link for ${user.email}: ${resetLink}`);
     }
 
     return {
       message:
         "If an account exists for this email, reset instructions have been sent.",
-      resetCode: result.fallback ? rawCode : undefined,
-      usedFallback: result.fallback,
-    };
-  }
-
-  async verifyResetCode(email: string, code: string) {
-    await this.findValidResetUser(email, code);
-    return {
-      message: "Reset code verified.",
     };
   }
 
   async resetPassword(body: ResetPasswordDto) {
-    const user = await this.findValidResetUser(body.email, body.code);
+    const hashedToken = createHash("sha256").update(body.token).digest("hex");
+    const user = await this.userService.findByResetTokenHash(hashedToken);
+
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      throw new BadRequestException("Reset token is invalid or expired.");
+    }
 
     user.password = await this.hashService.hashPassword(body.newPassword);
     user.resetTokenHash = null;
@@ -238,10 +211,52 @@ export class AuthService {
     };
   }
 
-  async logout(sessionId: string) {
+  async logout(userId: string, sessionId: string) {
     await this.loginSessionService.deleteSession(sessionId);
+
+    // Check if user has any remaining active sessions
+    const remainingSessions =
+      await this.loginSessionService.countUserSessions(userId);
+
+    // If no sessions left, clear all push tokens (no device is logged in)
+    if (remainingSessions === 0) {
+      await this.userService.clearAllExpoPushTokens(userId);
+    }
+
     return {
       message: "Logout successfully",
+    };
+  }
+
+  async registerPushToken(userId: string, expoPushToken: string) {
+    if (!expoPushToken || typeof expoPushToken !== "string") {
+      throw new BadRequestException("expoPushToken is required");
+    }
+
+    const user = await this.userService.addExpoPushToken(
+      userId,
+      expoPushToken,
+    );
+
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    return {
+      success: true,
+      message: "Device registered for alerts.",
+    };
+  }
+
+  async removePushToken(userId: string, expoPushToken: string) {
+    if (!expoPushToken || typeof expoPushToken !== "string") {
+      throw new BadRequestException("expoPushToken is required");
+    }
+
+    await this.userService.removeExpoPushToken(userId, expoPushToken);
+
+    return {
+      message: "Push token removed.",
     };
   }
 
@@ -255,12 +270,32 @@ export class AuthService {
       );
     }
 
+    // Clear all push tokens — only current device session remains,
+    // frontend should re-register its token after this call
+    await this.userService.clearAllExpoPushTokens(userId);
+
     return {
       message: `Successfully logged out from the remaining ${deletedSessionsCount} devices.`,
     };
   }
 
   async deleteExpiredSessions() {
-    return await this.loginSessionService.deleteExpiredSessions();
+    const { deletedCount, affectedUserIds } =
+      await this.loginSessionService.deleteExpiredSessions();
+
+    // For users whose sessions were just expired, check if they have
+    // any remaining active sessions. If not, clear their push tokens.
+    if (affectedUserIds.length > 0) {
+      const usersWithNoSessions =
+        await this.loginSessionService.findUsersWithNoSessions(
+          affectedUserIds,
+        );
+
+      if (usersWithNoSessions.length > 0) {
+        await this.userService.clearExpoPushTokensForUsers(usersWithNoSessions);
+      }
+    }
+
+    return deletedCount;
   }
 }

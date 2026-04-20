@@ -3,5 +3,4 @@ export { RegisterDto } from "./register.dto";
 export { TwoFactorAuthenticationCodeDto } from "./2fa.dto";
 export { ChangePasswordDto } from "./change-password.dto";
 export { ForgotPasswordDto } from "./forgot-password.dto";
-export { VerifyResetCodeDto } from "./verify-reset-code.dto";
 export { ResetPasswordDto } from "./reset-password.dto";

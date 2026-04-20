@@ -44,6 +44,9 @@ export class User {
   @Prop({ default: true })
   isActive: boolean;
 
+  @Prop({ type: [String], default: [] ,select: false})
+  expoPushTokens: string[];
+
   @Prop({ select: false, default: null })
   resetTokenHash?: string | null;
 

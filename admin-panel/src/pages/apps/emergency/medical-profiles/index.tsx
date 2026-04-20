@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
   Box,
   Button,
@@ -29,8 +28,7 @@ const MedicalProfilesPage = () => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
   const [search, setSearch] = useState('')
-  const [bloodGroupFilter, setBloodGroupFilter] = useState('')
-  const [allergyFilter, setAllergyFilter] = useState('')
+  const [userIdFilter, setUserIdFilter] = useState('')
   const [openEdit, setOpenEdit] = useState(false)
   const [activeRow, setActiveRow] = useState<any>(null)
   const [form, setForm] = useState<any>({
@@ -52,11 +50,10 @@ const MedicalProfilesPage = () => {
         page,
         limit: pageSize,
         search,
-        bloodGroup: bloodGroupFilter || undefined,
-        allergy: allergyFilter || undefined
+        userId: userIdFilter || undefined
       })
     )
-  }, [dispatch, page, pageSize, search, bloodGroupFilter, allergyFilter])
+  }, [dispatch, page, pageSize, search, userIdFilter])
 
   const columns = useMemo(
     () => [
@@ -67,9 +64,7 @@ const MedicalProfilesPage = () => {
         headerName: 'User',
         renderCell: ({ row }: any) => (
           <Box>
-            <Link href={`/apps/user/view/${row?.user?.id || ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              {row?.user?.fullName || 'N/A'}
-            </Link>
+            <div>{row?.user?.fullName || 'N/A'}</div>
             <small>{row?.user?.email || ''}</small>
           </Box>
         )
@@ -179,8 +174,7 @@ const MedicalProfilesPage = () => {
           page,
           limit: pageSize,
           search,
-          bloodGroup: bloodGroupFilter || undefined,
-          allergy: allergyFilter || undefined
+          userId: userIdFilter || undefined
         })
       )
       return
@@ -192,7 +186,7 @@ const MedicalProfilesPage = () => {
     <Card>
       <CardHeader title='Medical Profiles' />
       <CardContent>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 220px 220px' }, gap: 3, mb: 4 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 320px' }, gap: 3, mb: 4 }}>
           <TextField
             fullWidth
             size='small'
@@ -203,16 +197,9 @@ const MedicalProfilesPage = () => {
           <TextField
             fullWidth
             size='small'
-            label='Filter by Blood Group'
-            value={bloodGroupFilter}
-            onChange={e => setBloodGroupFilter(e.target.value)}
-          />
-          <TextField
-            fullWidth
-            size='small'
-            label='Filter by Allergy'
-            value={allergyFilter}
-            onChange={e => setAllergyFilter(e.target.value)}
+            label='Filter by User ID'
+            value={userIdFilter}
+            onChange={e => setUserIdFilter(e.target.value)}
           />
         </Box>
 

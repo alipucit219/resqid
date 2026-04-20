@@ -13,7 +13,6 @@ import {
   LoginDto,
   RegisterDto,
   ResetPasswordDto,
-  VerifyResetCodeDto,
 } from "../dtos";
 import { AuthService } from "../services/auth.service";
 import { ApiBearerAuth } from "@nestjs/swagger";
@@ -23,6 +22,7 @@ import { AuthenticatedRequestPayload } from "src/shared/decorators/authenticated
 import { SuccessApiResponseDto } from "src/shared/DTOs";
 import { Public } from "src/shared/decorators/is-public.decorator";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import { RegisterPushTokenDto } from "../dtos/register-push-token.dto";
 
 @ApiTags("Auth")
 @Controller("auth")
@@ -52,7 +52,7 @@ export class AuthController {
   }
 
   @Public()
-  @ApiOperation({ description: "Request a password reset code" })
+  @ApiOperation({ description: "Request a password reset link" })
   @HttpCode(HttpStatus.OK)
   @Post("forgot-password")
   async forgotPassword(@Body() body: ForgotPasswordDto) {
@@ -60,15 +60,7 @@ export class AuthController {
   }
 
   @Public()
-  @ApiOperation({ description: "Verify password reset code" })
-  @HttpCode(HttpStatus.OK)
-  @Post("verify-reset-code")
-  async verifyResetCode(@Body() body: VerifyResetCodeDto) {
-    return await this.authService.verifyResetCode(body.email, body.code);
-  }
-
-  @Public()
-  @ApiOperation({ description: "Reset password using a valid reset code" })
+  @ApiOperation({ description: "Reset password using a valid token" })
   @HttpCode(HttpStatus.OK)
   @Post("reset-password")
   async resetPassword(@Body() body: ResetPasswordDto) {
@@ -79,7 +71,7 @@ export class AuthController {
   @ApiBearerAuth()
   @Post("logout")
   async logout(@AuthenticatedRequestPayload() req: IAuthenticatedRequest) {
-    return await this.authService.logout(req.user.session.id);
+    return await this.authService.logout(req.user.id, req.user.session.id);
   }
 
   @ApiOkResponse({ type: SuccessApiResponseDto })
@@ -94,16 +86,28 @@ export class AuthController {
     return await this.authService.logoutFromAllDevices(id, session.id);
   }
 
-  @ApiOkResponse({ type: SuccessApiResponseDto })
-  @ApiOperation({ description: "Change password " })
+ @ApiOperation({ description: "Register Expo push token for current user" })
   @ApiBearerAuth()
-  @Post("change-password")
-  async changePassword(
-    @Body() body: ChangePasswordDto,
+  @HttpCode(HttpStatus.OK)
+  @Post("register-push-token")
+  async registerPushToken(
+    @Body() body: RegisterPushTokenDto,
     @AuthenticatedRequestPayload() req: IAuthenticatedRequest,
   ) {
     const { id } = req.user;
-    return await this.authService.changePassword(id, body);
+    return await this.authService.registerPushToken(id, body.expoPushToken);
+  }
+
+  @ApiOperation({ description: "Remove Expo push token for current user" })
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @Post("remove-push-token")
+  async removePushToken(
+    @Body() body: RegisterPushTokenDto,
+    @AuthenticatedRequestPayload() req: IAuthenticatedRequest,
+  ) {
+    const { id } = req.user;
+    return await this.authService.removePushToken(id, body.expoPushToken);
   }
 
   @Cron(CronExpression.EVERY_HOUR)

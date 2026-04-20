@@ -38,7 +38,13 @@ export class LoginSessionService {
     });
   }
 
-  async deleteSession(id: string): Promise<{ acknowledged: boolean; deletedCount: number }> {
+  async countUserSessions(userId: string) {
+    return await this.sessionModel.countDocuments({
+      userId: this.toObjectId(userId),
+    });
+  }
+
+  async deleteSession(id: string) {
     return await this.sessionModel.deleteOne({ _id: this.toObjectId(id) });
   }
 
@@ -58,10 +64,35 @@ export class LoginSessionService {
       today.getTime() - MILLISECONDS_IN_A_THIRTY_DAYS,
     );
 
+    // Get the distinct userIds of expired sessions before deleting them
+    const expiredSessions = await this.sessionModel.find(
+      { createdAt: { $lt: tokensExpectedTimeToLive } },
+      { userId: 1 },
+    );
+    const affectedUserIds = [
+      ...new Set(expiredSessions.map((s) => s.userId.toString())),
+    ];
+
     const response = await this.sessionModel.deleteMany({
       createdAt: { $lt: tokensExpectedTimeToLive },
     });
 
-    return response.deletedCount ?? 0;
+    // Return affected userIds so the caller can clean up push tokens
+    return {
+      deletedCount: response.deletedCount ?? 0,
+      affectedUserIds,
+    };
+  }
+
+  async findUsersWithNoSessions(userIds: string[]) {
+    const objectIds = userIds.map((id) => new Types.ObjectId(id));
+    const usersWithSessions = await this.sessionModel.distinct("userId", {
+      userId: { $in: objectIds },
+    });
+    const usersWithSessionSet = new Set(
+      usersWithSessions.map((id) => id.toString()),
+    );
+    return userIds.filter((id) => !usersWithSessionSet.has(id));
   }
 }
+

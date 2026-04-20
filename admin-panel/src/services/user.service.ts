@@ -1,9 +1,9 @@
-import apiClient from 'src/utils/api-client'
+import apiClient from "src/utils/api-client"
 
-const singleUserDetail = async (id: string) => {
+const singleUserDetail = async (id: number) => {
   const response = await apiClient.get(`v2/user/${id}`)
 
-  return response.data?.data || response.data
+  return response.data
 }
 
 export {

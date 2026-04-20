@@ -12,6 +12,7 @@ import { LoginSessionService } from "./services/login-session.service";
 import { UserModule } from "../user/user.module";
 import { SharedModule } from "src/shared/shared.module";
 import { LoginSession, LoginSessionSchema } from "./entities/login-session.entity";
+import { PushService } from "./services/push.service";
 
 @Module({
   imports: [
@@ -38,8 +39,9 @@ import { LoginSession, LoginSessionSchema } from "./entities/login-session.entit
     AuthTokenService,
     ConfigService,
     LoginSessionService,
+    PushService,
   ],
-  exports: [AuthService, LoginSessionService],
+  exports: [AuthService, LoginSessionService, PushService],
   controllers: [AuthController],
 })
 export class AuthModule {}

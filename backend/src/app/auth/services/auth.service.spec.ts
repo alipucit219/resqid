@@ -1,12 +1,11 @@
-import { createHash } from "crypto";
 import { BadRequestException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 
 describe("AuthService", () => {
-  it("throws for invalid/expired reset code", async () => {
+  it("throws for invalid/expired reset token", async () => {
     const service = new AuthService(
       {
-        findByEmail: jest.fn().mockResolvedValue(null),
+        findByResetTokenHash: jest.fn().mockResolvedValue(null),
       } as any,
       {} as any,
       {} as any,
@@ -17,23 +16,21 @@ describe("AuthService", () => {
 
     await expect(
       service.resetPassword({
-        email: "user@example.com",
-        code: "123456",
+        token: "invalid-token",
         newPassword: "NewPassword123",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("resets password and clears token fields on valid code", async () => {
-    const validCode = "123456";
+  it("resets password and clears token fields on valid token", async () => {
     const user = {
       password: "old-password",
-      resetTokenHash: createHash("sha256").update(validCode).digest("hex"),
+      resetTokenHash: "hashed",
       resetTokenExpiry: new Date(Date.now() + 60_000),
     };
 
     const userService = {
-      findByEmail: jest.fn().mockResolvedValue(user),
+      findByResetTokenHash: jest.fn().mockResolvedValue(user),
       save: jest.fn().mockResolvedValue(user),
     };
 
@@ -51,8 +48,7 @@ describe("AuthService", () => {
     );
 
     const result = await service.resetPassword({
-      email: "user@example.com",
-      code: validCode,
+      token: "valid-token",
       newPassword: "NewPassword123",
     });
 

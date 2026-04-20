@@ -31,6 +31,7 @@ async function bootstrap() {
         configService.getEnvironment() ===
         DeploymentEnvironmentTypes.Production,
       transform: true,
+      whitelist: true,
       forbidNonWhitelisted: true,
     }),
   );
@@ -56,6 +57,7 @@ async function bootstrap() {
 
   // Listen on all interfaces so LAN devices (Expo Go on phone) can reach backend.
   await app.listen(configService.getPort(), "0.0.0.0");
+
 }
 
 bootstrap();

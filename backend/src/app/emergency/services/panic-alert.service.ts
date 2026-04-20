@@ -7,11 +7,13 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { User, UserDocument } from "src/app/user/user.entity";
 import { EmailService } from "src/shared/services";
+import { PushService } from "src/app/auth/services/push.service";
 import {
   CreatePanicAlertDto,
   EmergencyAdminListQueryDto,
 } from "../dtos";
 import { SmsGatewayService } from "./sms-gateway.service";
+import { WhatsappService } from "./whatsapp.service";
 import {
   PanicAlert,
   PanicAlertDocument,
@@ -40,6 +42,8 @@ export class PanicAlertService {
     private readonly userModel: Model<UserDocument>,
     private readonly smsGatewayService: SmsGatewayService,
     private readonly emailService: EmailService,
+    private readonly pushService: PushService,
+    private readonly whatsappService: WhatsappService,
   ) {}
 
   private toObjectId(id: string) {
@@ -54,9 +58,11 @@ export class PanicAlertService {
       _id: this.toObjectId(userId),
       deletedAt: null,
     });
+
     if (!user) {
       throw new NotFoundException("User not found.");
     }
+
     return user;
   }
 
@@ -129,25 +135,72 @@ export class PanicAlertService {
       latitude: payload.latitude,
       longitude: payload.longitude,
       message: payload.message || null,
+      fullName: user.fullName,
       status: PanicAlertStatus.PENDING,
       fallbackUsed: false,
     });
 
-    if (contacts.length === 0) {
-      panicAlert.status = PanicAlertStatus.LOGGED_FALLBACK;
-      panicAlert.fallbackUsed = true;
+    // Send push notifications to emergency contacts' registered devices
+    let pushSentCount = 0;
+
+    for (const contact of contacts) {
+      if (!contact.email) continue;
+
+      const receiver = await this.userModel
+        .findOne({ email: contact.email, deletedAt: null })
+        .select("+expoPushTokens");
+
+      const tokens = receiver?.expoPushTokens || [];
+      if (!tokens.length) continue;
+
+      await this.pushService.sendPush(tokens, {
+        senderName: user.fullName,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        message: payload.message,
+      });
+
+      pushSentCount++;
+    }
+
+    // Send WhatsApp SOS alerts to all emergency contacts
+    const whatsappResults = [];
+    const composedMessage =
+      payload.message ||
+      `Emergency alert from ${user.fullName}. Location: https://maps.google.com/?q=${payload.latitude},${payload.longitude}`;
+
+    for (const contact of contacts) {
+      const result = await this.whatsappService.sendSosAlert({
+        senderName: user.fullName,
+        message: composedMessage,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        phoneNumber: contact.phoneNumber,
+      });
+      whatsappResults.push(result);
+    }
+
+    const whatsappSentCount = whatsappResults.filter((r) => r.success).length;
+    const hasTestingOnlyErrors = whatsappResults.some((r) => r.testingOnly);
+
+    // If at least one push was delivered, mark alert and return early
+    if (pushSentCount > 0) {
+      panicAlert.status = PanicAlertStatus.SENT;
+      panicAlert.fallbackUsed = false;
       await panicAlert.save();
 
       return {
         data: panicAlert,
-        warning:
-          "No emergency contacts were found. Alert was saved with fallback status.",
+        message: `Push notification sent to ${pushSentCount} contact(s)` +
+          (whatsappSentCount > 0
+            ? `, WhatsApp alert sent to ${whatsappSentCount} contact(s)`
+            : ""),
+        ...(hasTestingOnlyErrors && {
+          warning:
+            "Some WhatsApp messages failed because recipient phone numbers are not in the allowed testing list. Add recipients to your Meta app's allowed numbers.",
+        }),
       };
     }
-
-    const composedMessage =
-      payload.message ||
-      `Emergency alert from ${user.fullName}. Location: https://maps.google.com/?q=${payload.latitude},${payload.longitude}`;
 
     const dispatchesPayload: Partial<PanicAlertDispatch>[] = [];
     const statuses: PanicAlertDispatchStatus[] = [];
@@ -193,16 +246,26 @@ export class PanicAlertService {
     );
     await panicAlert.save();
 
+    const warnings: string[] = [];
+    if (panicAlert.fallbackUsed) {
+      warnings.push("SMS provider fallback was used.");
+    }
+    if (hasTestingOnlyErrors) {
+      warnings.push(
+        "Some WhatsApp messages failed because recipient phone numbers are not in the allowed testing list. Add recipients to your Meta app's allowed numbers.",
+      );
+    }
+
     return {
       data: panicAlert,
-      warning:
-        panicAlert.fallbackUsed === true
-          ? "SMS provider fallback was used."
-          : undefined,
+      ...(whatsappSentCount > 0 && {
+        message: `WhatsApp alert sent to ${whatsappSentCount} contact(s)`,
+      }),
+      ...(warnings.length > 0 && { warning: warnings.join(" ") }),
     };
   }
 
-  async adminList(query: EmergencyAdminListQueryDto): Promise<any> {
+  async adminList(query: EmergencyAdminListQueryDto) {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -281,7 +344,7 @@ export class PanicAlertService {
     };
   }
 
-  async adminDetail(alertId: string): Promise<any> {
+  async adminDetail(alertId: string) {
     const alert = await this.panicAlertModel
       .findOne({
         _id: this.toObjectId(alertId),

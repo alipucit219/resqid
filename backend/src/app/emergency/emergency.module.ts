@@ -13,13 +13,16 @@ import { EmergencyContactService } from "./services/emergency-contact.service";
 import { EmergencyAccessService } from "./services/emergency-access.service";
 import { PanicAlertService } from "./services/panic-alert.service";
 import { SmsGatewayService } from "./services/sms-gateway.service";
+import { WhatsappService } from "./services/whatsapp.service";
 import { MeEmergencyController } from "./controllers/me-emergency.controller";
 import { AdminEmergencyController } from "./controllers/admin-emergency.controller";
 import { PublicEmergencyController } from "./controllers/public-emergency.controller";
 import { SharedModule } from "src/shared/shared.module";
+import { AuthModule } from "../auth/auth.module";
 
 @Module({
   imports: [
+    AuthModule,
     SharedModule,
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
@@ -43,6 +46,7 @@ import { SharedModule } from "src/shared/shared.module";
     EmergencyAccessService,
     PanicAlertService,
     SmsGatewayService,
+    WhatsappService,
   ],
 })
 export class EmergencyModule {}

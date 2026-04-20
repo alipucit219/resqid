@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
   Box,
   Button,
@@ -21,7 +20,9 @@ import { AppDispatch, RootState } from 'src/store'
 import {
   createEmergencyContact,
   DEFAULT_EMERGENCY_CONTACT_PARAMS,
-  fetchEmergencyContacts
+  deleteEmergencyContact,
+  fetchEmergencyContacts,
+  updateEmergencyContact
 } from 'src/store/apps/emergencyContacts'
 
 const PHONE_REGEX = /^\+?[0-9()\-\s]{7,20}$/
@@ -33,8 +34,10 @@ const EmergencyContactsPage = () => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
   const [search, setSearch] = useState('')
+  const [userIdFilter, setUserIdFilter] = useState('')
   const [openForm, setOpenForm] = useState(false)
-  const [form, setForm] = useState({
+  const [activeRow, setActiveRow] = useState<any>(null)
+  const [form, setForm] = useState<any>({
     userId: '',
     name: '',
     phoneNumber: '',
@@ -43,71 +46,138 @@ const EmergencyContactsPage = () => {
     isPrimary: false
   })
 
-  const reloadContacts = () => {
+  const openCreateForm = () => {
+    setActiveRow(null)
+    setForm({
+      userId: userIdFilter.trim(),
+      name: '',
+      phoneNumber: '',
+      email: '',
+      relationship: '',
+      isPrimary: false
+    })
+    setOpenForm(true)
+  }
+
+  useEffect(() => {
     dispatch(
       fetchEmergencyContacts({
         ...DEFAULT_EMERGENCY_CONTACT_PARAMS,
         page,
         limit: pageSize,
-        search
+        search,
+        userId: userIdFilter || undefined
       })
     )
-  }
-
-  useEffect(() => {
-    reloadContacts()
-  }, [dispatch, page, pageSize, search])
+  }, [dispatch, page, pageSize, search, userIdFilter])
 
   const columns = useMemo(
     () => [
       {
-        flex: 0.22,
+        flex: 0.2,
         minWidth: 220,
         field: 'user',
         headerName: 'User',
         renderCell: ({ row }: any) => (
           <Box>
-            <Link href={`/apps/user/view/${row?.user?.id || ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              {row?.user?.fullName || 'N/A'}
-            </Link>
+            <div>{row?.user?.fullName || 'N/A'}</div>
             <small>{row?.user?.email || ''}</small>
+            <small style={{ display: 'block' }}>{row?.user?.id || ''}</small>
           </Box>
         )
       },
       {
-        flex: 0.56,
-        minWidth: 520,
-        field: 'contacts',
-        headerName: 'Emergency Contacts',
-        sortable: false,
-        renderCell: ({ row }: any) => (
-          <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {(row?.contacts || [])
-              .map((contact: any) => `${contact.isPrimary ? 'Primary: ' : ''}${contact.name}${contact.email ? ` (${contact.email})` : ''}`)
-              .join(' | ') || '—'}
-          </Box>
-        )
+        flex: 0.15,
+        minWidth: 150,
+        field: 'name',
+        headerName: 'Contact Name'
+      },
+      {
+        flex: 0.15,
+        minWidth: 160,
+        field: 'phoneNumber',
+        headerName: 'Phone'
+      },
+      {
+        flex: 0.2,
+        minWidth: 200,
+        field: 'email',
+        headerName: 'Email'
+      },
+      {
+        flex: 0.15,
+        minWidth: 140,
+        field: 'relationship',
+        headerName: 'Relationship'
       },
       {
         flex: 0.1,
         minWidth: 100,
-        field: 'totalContacts',
-        headerName: 'Total'
+        field: 'isPrimary',
+        headerName: 'Primary',
+        renderCell: ({ row }: any) => (row?.isPrimary ? 'Yes' : 'No')
       },
       {
-        flex: 0.12,
-        minWidth: 140,
+        flex: 0.15,
+        minWidth: 180,
         field: 'actions',
         headerName: 'Actions',
         sortable: false,
         renderCell: ({ row }: any) => (
-          <Button component={Link} href={`/apps/user/view/${row?.user?.id || ''}`} variant='outlined' size='small'>
-            View User
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant='outlined'
+              size='small'
+              onClick={() => {
+                setActiveRow(row)
+                setForm({
+                  userId: row?.user?.id || '',
+                  name: row?.name || '',
+                  phoneNumber: row?.phoneNumber || '',
+                  email: row?.email || '',
+                  relationship: row?.relationship || '',
+                  isPrimary: Boolean(row?.isPrimary)
+                })
+                setOpenForm(true)
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              variant='outlined'
+              color='error'
+              size='small'
+              onClick={async () => {
+                if (!row?.user?.id) return
+                const res = await dispatch(deleteEmergencyContact({ userId: row.user.id, contactId: row.id }))
+                if (res.type.includes('fulfilled')) {
+                  toast.success('Contact deleted')
+                  if (activeRow?.id === row.id) {
+                    setOpenForm(false)
+                    setActiveRow(null)
+                    setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
+                  }
+                  dispatch(
+                    fetchEmergencyContacts({
+                      ...DEFAULT_EMERGENCY_CONTACT_PARAMS,
+                      page,
+                      limit: pageSize,
+                      search,
+                      userId: userIdFilter || undefined
+                    })
+                  )
+                  return
+                }
+                toast.error('Failed to delete contact')
+              }}
+            >
+              Delete
+            </Button>
+          </Box>
         )
       }
     ],
-    []
+    [dispatch, page, pageSize, search, userIdFilter, activeRow]
   )
 
   const handleSubmit = async () => {
@@ -124,15 +194,15 @@ const EmergencyContactsPage = () => {
       isPrimary: Boolean(form.isPrimary)
     }
 
-    if (!payload.name) {
+    if (!payload.name?.trim()) {
       toast.error('Contact name is required')
       return
     }
-    if (!payload.phoneNumber) {
+    if (!payload.phoneNumber?.trim()) {
       toast.error('Contact number is required')
       return
     }
-    if (!PHONE_REGEX.test(payload.phoneNumber)) {
+    if (!PHONE_REGEX.test(payload.phoneNumber.trim())) {
       toast.error('Contact number format is invalid')
       return
     }
@@ -141,16 +211,27 @@ const EmergencyContactsPage = () => {
       return
     }
 
-    const res = await dispatch(createEmergencyContact({ userId: String(form.userId).trim(), payload }))
+    const res =
+      activeRow?.id && activeRow?.user?.id
+        ? await dispatch(updateEmergencyContact({ userId: activeRow.user.id, contactId: activeRow.id, payload }))
+        : await dispatch(createEmergencyContact({ userId: String(form.userId).trim(), payload }))
 
     if (res.type.includes('fulfilled')) {
-      toast.success('Contact created')
+      toast.success(activeRow?.id ? 'Contact updated' : 'Contact created')
       setOpenForm(false)
+      setActiveRow(null)
       setForm({ userId: '', name: '', phoneNumber: '', email: '', relationship: '', isPrimary: false })
-      reloadContacts()
+      dispatch(
+        fetchEmergencyContacts({
+          ...DEFAULT_EMERGENCY_CONTACT_PARAMS,
+          page,
+          limit: pageSize,
+          search,
+          userId: userIdFilter || undefined
+        })
+      )
       return
     }
-
     toast.error('Failed to save contact')
   }
 
@@ -161,30 +242,28 @@ const EmergencyContactsPage = () => {
         action={
           <Button
             variant='contained'
-            onClick={() => {
-              setForm({
-                userId: '',
-                name: '',
-                phoneNumber: '',
-                email: '',
-                relationship: '',
-                isPrimary: false
-              })
-              setOpenForm(true)
-            }}
+            onClick={openCreateForm}
           >
             Add Contact
           </Button>
         }
       />
       <CardContent>
-        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 3, mb: 4 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 320px' }, gap: 3, mb: 4 }}>
           <TextField
             fullWidth
             size='small'
-            label='Search by user or contact'
+            label='Search by user/contact'
             value={search}
             onChange={e => setSearch(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            size='small'
+            label='Filter by User ID'
+            value={userIdFilter}
+            onChange={e => setUserIdFilter(e.target.value)}
+            helperText='Paste a user id here, then click Add Contact to auto-fill it in the form'
           />
         </Box>
 
@@ -206,28 +285,39 @@ const EmergencyContactsPage = () => {
       </CardContent>
 
       <Dialog open={openForm} onClose={() => setOpenForm(false)} fullWidth maxWidth='sm'>
-        <DialogTitle>Add Contact</DialogTitle>
+        <DialogTitle>{activeRow?.id ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 3, mt: 1 }}>
-          <TextField
-            label='User ID'
-            value={form.userId}
-            onChange={e => setForm({ ...form, userId: e.target.value })}
-            helperText='Enter the profile owner user id.'
-          />
+          {!activeRow?.id && (
+            <TextField
+              label='User ID'
+              value={form.userId}
+              onChange={e => setForm({ ...form, userId: e.target.value })}
+              helperText='Mongo user id for the profile owner. Tip: use Filter by User ID above to prefill this field.'
+            />
+          )}
           <TextField label='Name' value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <TextField
             label='Phone Number'
             value={form.phoneNumber}
             onChange={e => setForm({ ...form, phoneNumber: e.target.value.replace(/[^0-9()+\-\s]/g, '') })}
           />
-          <TextField label='Email' value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <TextField
+            label='Email'
+            value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
+          />
           <TextField
             label='Relationship'
             value={form.relationship}
             onChange={e => setForm({ ...form, relationship: e.target.value })}
           />
           <FormControlLabel
-            control={<Switch checked={Boolean(form.isPrimary)} onChange={e => setForm({ ...form, isPrimary: e.target.checked })} />}
+            control={
+              <Switch
+                checked={Boolean(form.isPrimary)}
+                onChange={e => setForm({ ...form, isPrimary: e.target.checked })}
+              />
+            }
             label='Primary Contact'
           />
         </DialogContent>

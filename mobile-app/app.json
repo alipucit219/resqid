@@ -25,8 +25,14 @@
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.anonymous.mobileapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,7 +51,16 @@
           "locationWhenInUsePermission": "Allow ResQID to use your location for SOS alerts."
         }
       ],
+      [
+        "expo-notifications"
+      ],
       "./plugins/show-when-locked"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"
+      }
+    },
+    "owner": "muji273"
   }
 }
