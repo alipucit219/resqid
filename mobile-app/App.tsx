@@ -164,6 +164,12 @@ const fileNameFromPath = (value?: string | null) => {
   const cleaned = raw.split("?")[0].split("#")[0];
   return cleaned.split("/").filter(Boolean).pop() || "";
 };
+const displayCheckupFileLabel = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Uploaded PDF";
+  const fileName = fileNameFromPath(raw);
+  return fileName || raw;
+};
 const resolveCheckupDownloadUrl = (value?: string | null) => {
   const fileName = fileNameFromPath(value);
   if (!fileName) return "";
@@ -2419,12 +2425,14 @@ export default function App() {
                 ) : (
                   summary.checkupFiles.map((item, idx) => (
                     <View key={`${item}-${idx}`} style={s.itemPill}>
-                      <Text style={s.itemPillText}>{item}</Text>
+                      <Text style={s.itemPillText} numberOfLines={1}>
+                        {displayCheckupFileLabel(item)}
+                      </Text>
                       <Pressable style={s.itemPillAction} onPress={() => downloadCheckupFile(item)}>
-                        <Ionicons name="download-outline" size={14} color="#2563eb" />
+                        <Ionicons name="download-outline" size={18} color="#2563eb" />
                       </Pressable>
                       <Pressable style={s.itemPillRemove} onPress={() => removeCheckupFile(item)}>
-                        <Ionicons name="close" size={14} color="#b91c1c" />
+                        <Ionicons name="close" size={18} color="#b91c1c" />
                       </Pressable>
                     </View>
                   ))
@@ -2917,26 +2925,27 @@ const s = StyleSheet.create({
   itemPill: {
     backgroundColor: "#f3f4f6",
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 8,
     maxWidth: "100%",
   },
-  itemPillText: { color: "#334155", fontSize: 12 },
+  itemPillText: { color: "#334155", fontSize: 13, flexShrink: 1, maxWidth: 180 },
   itemPillRemove: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fee2e2",
   },
   itemPillAction: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#dbeafe",
