@@ -63,9 +63,11 @@ const MedicalSummariesPage = () => {
         headerName: 'User',
         renderCell: ({ row }: any) => (
           <Box>
-            <div>{row?.user?.fullName || 'N/A'}</div>
-            <small>{row?.user?.email || ''}</small>
-            <small style={{ display: 'block' }}>{row?.user?.id || ''}</small>
+            <div>
+              {row?.user?.fullName
+                ? `${row.user.fullName}${row?.user?.email ? ` (${row.user.email})` : ''}`
+                : 'N/A'}
+            </div>
           </Box>
         )
       },
@@ -188,7 +190,6 @@ const MedicalSummariesPage = () => {
             label='Search by user'
             value={search}
             onChange={e => setSearch(e.target.value)}
-            helperText='User ID is shown under each email in the User column'
           />
         </Box>
 

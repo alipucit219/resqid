@@ -68,9 +68,10 @@ const EmergencyContactsPage = () => {
         renderCell: ({ row }: any) => (
           <Box>
             <Link href={`/apps/user/view/${row?.user?.id || ''}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              {row?.user?.fullName || 'N/A'}
+              {row?.user?.fullName
+                ? `${row.user.fullName}${row?.user?.email ? ` (${row.user.email})` : ''}`
+                : 'N/A'}
             </Link>
-            <small>{row?.user?.email || ''}</small>
           </Box>
         )
       },
