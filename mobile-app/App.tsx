@@ -238,6 +238,8 @@ const ymdToDate = (value: string) => {
 const tokenFrom = (v: string) =>
   v.includes("/emergency-access/")
     ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
+    : v.includes("emergency-access:")
+      ? v.split("emergency-access:")[1].split("?")[0].split("#")[0].replace(/^\/+/, "").trim()
     : v.trim();
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
 const netErr = (e: unknown) =>
@@ -1319,6 +1321,37 @@ export default function App() {
     });
   };
 
+  useEffect(() => {
+    const openEmergencyLink = async (rawUrl?: string | null) => {
+      const incoming = String(rawUrl || "").trim();
+      const emergencyToken = tokenFrom(incoming);
+      if (!incoming || !emergencyToken || emergencyToken === incoming) {
+        return;
+      }
+
+      setAuthScreen("public");
+      setPublicInput(emergencyToken);
+      try {
+        await resolvePublic(emergencyToken);
+        setOk("Emergency profile opened.");
+      } catch (error) {
+        pushToast(errMsg(error), "error");
+      }
+    };
+
+    void Linking.getInitialURL().then((url) => {
+      void openEmergencyLink(url);
+    });
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void openEmergencyLink(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isOnline, snapshot]);
+
   const addProfileItem = (key: "allergies" | "chronicConditions" | "medications", raw: string, clear: () => void) => {
     const value = raw.trim();
     if (!value) return;
@@ -1583,7 +1616,7 @@ export default function App() {
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
                     <Ionicons
-                      name={showLoginPassword ? "eye-off-outline" : "eye-outline"}
+                      name={showLoginPassword ? "eye-outline" : "eye-off-outline"}
                       size={22}
                       color="#6b7280"
                     />

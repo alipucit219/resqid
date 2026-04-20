@@ -55,9 +55,7 @@ export class EmergencyAccessService {
   }
 
   private buildEmergencyUrl(token: string) {
-    const base = this.configService.getBaseUrl().replace(/\/$/, "");
-    const apiPrefix = this.configService.getGlobalAPIPrefix();
-    return `${base}/${apiPrefix}/emergency-access/${token}`;
+    return `resqid://emergency-access/${token}`;
   }
 
   private async ensureUserExists(userId: string) {
