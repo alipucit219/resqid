@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  NotFoundException,
 } from "@nestjs/common";
 import { createHash, randomBytes } from "crypto";
 import { HashService, EmailService } from "../../../shared/services";
@@ -210,10 +211,52 @@ export class AuthService {
     };
   }
 
-  async logout(sessionId: string) {
+  async logout(userId: string, sessionId: string) {
     await this.loginSessionService.deleteSession(sessionId);
+
+    // Check if user has any remaining active sessions
+    const remainingSessions =
+      await this.loginSessionService.countUserSessions(userId);
+
+    // If no sessions left, clear all push tokens (no device is logged in)
+    if (remainingSessions === 0) {
+      await this.userService.clearAllExpoPushTokens(userId);
+    }
+
     return {
       message: "Logout successfully",
+    };
+  }
+
+  async registerPushToken(userId: string, expoPushToken: string) {
+    if (!expoPushToken || typeof expoPushToken !== "string") {
+      throw new BadRequestException("expoPushToken is required");
+    }
+
+    const user = await this.userService.addExpoPushToken(
+      userId,
+      expoPushToken,
+    );
+
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    return {
+      success: true,
+      message: "Device registered for alerts.",
+    };
+  }
+
+  async removePushToken(userId: string, expoPushToken: string) {
+    if (!expoPushToken || typeof expoPushToken !== "string") {
+      throw new BadRequestException("expoPushToken is required");
+    }
+
+    await this.userService.removeExpoPushToken(userId, expoPushToken);
+
+    return {
+      message: "Push token removed.",
     };
   }
 
@@ -227,12 +270,32 @@ export class AuthService {
       );
     }
 
+    // Clear all push tokens — only current device session remains,
+    // frontend should re-register its token after this call
+    await this.userService.clearAllExpoPushTokens(userId);
+
     return {
       message: `Successfully logged out from the remaining ${deletedSessionsCount} devices.`,
     };
   }
 
   async deleteExpiredSessions() {
-    return await this.loginSessionService.deleteExpiredSessions();
+    const { deletedCount, affectedUserIds } =
+      await this.loginSessionService.deleteExpiredSessions();
+
+    // For users whose sessions were just expired, check if they have
+    // any remaining active sessions. If not, clear their push tokens.
+    if (affectedUserIds.length > 0) {
+      const usersWithNoSessions =
+        await this.loginSessionService.findUsersWithNoSessions(
+          affectedUserIds,
+        );
+
+      if (usersWithNoSessions.length > 0) {
+        await this.userService.clearExpoPushTokensForUsers(usersWithNoSessions);
+      }
+    }
+
+    return deletedCount;
   }
 }

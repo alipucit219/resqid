@@ -267,6 +267,47 @@ export class UserService {
     await user.save();
   }
 
+  async addExpoPushToken(userId: string, expoPushToken: string) {
+    // Remove the token from any other user who has it (device-switching scenario)
+    await this.userModel.updateMany(
+      {
+        _id: { $ne: this.toObjectId(userId) },
+        expoPushTokens: expoPushToken,
+      },
+      { $pull: { expoPushTokens: expoPushToken } },
+    );
+
+    return await this.userModel.findByIdAndUpdate(
+      this.toObjectId(userId),
+      { $addToSet: { expoPushTokens: expoPushToken } },
+      { new: true },
+    );
+  }
+
+  async removeExpoPushToken(userId: string, expoPushToken: string) {
+    return await this.userModel.findByIdAndUpdate(
+      this.toObjectId(userId),
+      { $pull: { expoPushTokens: expoPushToken } },
+      { new: true },
+    );
+  }
+
+  async clearAllExpoPushTokens(userId: string) {
+    return await this.userModel.findByIdAndUpdate(
+      this.toObjectId(userId),
+      { $set: { expoPushTokens: [] } },
+      { new: true },
+    );
+  }
+
+  async clearExpoPushTokensForUsers(userIds: string[]) {
+    const objectIds = userIds.map((id) => this.toObjectId(id));
+    return await this.userModel.updateMany(
+      { _id: { $in: objectIds } },
+      { $set: { expoPushTokens: [] } },
+    );
+  }
+
   async findByResetTokenHash(tokenHash: string) {
     return await this.userModel
       .findOne({

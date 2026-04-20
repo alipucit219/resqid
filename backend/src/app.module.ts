@@ -15,6 +15,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { AuthorizationGuard } from "./app/auth/guards/authorization.guard";
 import { SeederModule } from "./database/seeder/seeder.module";
 import { EmergencyModule } from "./app/emergency/emergency.module";
+import { PushService } from "./app/auth/services/push.service";
 
 @Module({
   imports: [
@@ -48,6 +49,9 @@ import { EmergencyModule } from "./app/emergency/emergency.module";
       provide: APP_GUARD,
       useClass: AuthorizationGuard,
     },
+    PushService,
   ],
+
+  exports: [PushService], // 🔥 THIS IS REQUIRED
 })
 export class AppModule { }
