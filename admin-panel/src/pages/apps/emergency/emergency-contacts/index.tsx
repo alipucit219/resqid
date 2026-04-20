@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  MenuItem,
   Switch,
   TextField
 } from '@mui/material'
@@ -23,12 +24,14 @@ import {
   DEFAULT_EMERGENCY_CONTACT_PARAMS,
   fetchEmergencyContacts
 } from 'src/store/apps/emergencyContacts'
+import { DEFAULT_USER_PARAMS, fetchUsers } from 'src/store/apps/user'
 
 const PHONE_REGEX = /^\+?[0-9()\-\s]{7,20}$/
 
 const EmergencyContactsPage = () => {
   const dispatch = useDispatch<AppDispatch>()
   const emergencyContacts = useSelector((state: RootState) => state.emergencyContacts)
+  const users = useSelector((state: RootState) => state.user)
 
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -57,6 +60,16 @@ const EmergencyContactsPage = () => {
   useEffect(() => {
     reloadContacts()
   }, [dispatch, page, pageSize, search])
+
+  useEffect(() => {
+    dispatch(
+      fetchUsers({
+        ...DEFAULT_USER_PARAMS,
+        page: 0,
+        limit: 200
+      })
+    )
+  }, [dispatch])
 
   const columns = useMemo(
     () => [
@@ -113,7 +126,7 @@ const EmergencyContactsPage = () => {
 
   const handleSubmit = async () => {
     if (!String(form.userId || '').trim()) {
-      toast.error('User id is required')
+      toast.error('Please select a user')
       return
     }
 
@@ -210,11 +223,21 @@ const EmergencyContactsPage = () => {
         <DialogTitle>Add Contact</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 3, mt: 1 }}>
           <TextField
-            label='User ID'
+            select
+            label='User'
             value={form.userId}
             onChange={e => setForm({ ...form, userId: e.target.value })}
-            helperText='Enter the profile owner user id.'
-          />
+            helperText='Select the profile owner for this contact.'
+          >
+            <MenuItem value=''>Select user</MenuItem>
+            {(users.data || []).map((user: any) => (
+              <MenuItem key={user.id} value={user.id}>
+                {user.fullName
+                  ? `${user.fullName}${user?.email ? ` (${user.email})` : ''}`
+                  : user?.email || user.id}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField label='Name' value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <TextField
             label='Phone Number'
