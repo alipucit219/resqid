@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Res,
   Put,
   UploadedFile,
   UseInterceptors,
@@ -16,10 +17,12 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname, join } from "path";
 import type { Request } from "express";
-import { mkdirSync } from "fs";
+import type { Response } from "express";
+import { existsSync, mkdirSync } from "fs";
 import { AuthenticatedRequestPayload } from "src/shared/decorators";
 import { IAuthenticatedRequest } from "src/shared/interfaces";
 import { ConfigService } from "src/config";
+import { Public } from "src/shared/decorators/is-public.decorator";
 import {
   CreateEmergencyContactDto,
   CreatePanicAlertDto,
@@ -32,6 +35,8 @@ import { MedicalSummaryService } from "../services/medical-summary.service";
 import { EmergencyContactService } from "../services/emergency-contact.service";
 import { EmergencyAccessService } from "../services/emergency-access.service";
 import { PanicAlertService } from "../services/panic-alert.service";
+
+const getCheckupUploadDir = () => join(process.cwd(), "public", "uploads", "checkups");
 
 @ApiBearerAuth()
 @ApiTags("Emergency - Me")
@@ -83,7 +88,7 @@ export class MeEmergencyController {
     FileInterceptor("file", {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const uploadDir = join(process.cwd(), "public", "uploads", "checkups");
+          const uploadDir = getCheckupUploadDir();
           mkdirSync(uploadDir, { recursive: true });
           cb(null, uploadDir);
         },
@@ -120,6 +125,30 @@ export class MeEmergencyController {
       url: `${baseUrl}${relativePath}`,
       path: relativePath,
     };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Download a checkup PDF file from server uploads" })
+  @Get("medical-summary/checkup-files/:fileName/download")
+  downloadCheckupFile(
+    @Param("fileName") fileName: string,
+    @Res() res: Response,
+  ) {
+    const safeFileName = String(fileName || "").trim();
+    if (!safeFileName || safeFileName.includes("/") || safeFileName.includes("\\")) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: "Invalid file name.",
+      });
+    }
+
+    const filePath = join(getCheckupUploadDir(), safeFileName);
+    if (!existsSync(filePath)) {
+      return res.status(HttpStatus.NOT_FOUND).json({
+        message: "File not found.",
+      });
+    }
+
+    return res.download(filePath, safeFileName);
   }
 
   @ApiOperation({ summary: "List requesting user's emergency contacts" })

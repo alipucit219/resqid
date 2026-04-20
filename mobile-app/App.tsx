@@ -86,6 +86,7 @@ const normalizeApiBase = (value: string) => {
   const candidate = value.replace(/\/$/, "");
   return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
 };
+const currentApiOrigin = () => ACTIVE_API.replace(/\/v\d+$/i, "");
 const inferDevApiBase = () => {
   if (Platform.OS === "web") return "http://localhost:8000";
 
@@ -132,14 +133,13 @@ const resolveApiBases = () => {
 const API_BASES = resolveApiBases();
 let ACTIVE_API = API_BASES[0];
 const API = ACTIVE_API;
-const API_ORIGIN = API.replace(/\/v\d+$/i, "");
 const normalizeEmergencyUrl = (value?: string | null) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
   try {
     const parsed = new URL(raw);
     if (["127.0.0.1", "localhost", "0.0.0.0"].includes(parsed.hostname.toLowerCase())) {
-      const origin = new URL(API_ORIGIN);
+      const origin = new URL(currentApiOrigin());
       parsed.protocol = origin.protocol;
       parsed.hostname = origin.hostname;
       parsed.port = origin.port;
@@ -154,8 +154,20 @@ const resolveAssetUrl = (value?: string | null) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
   if (/^https?:\/\//i.test(raw)) return raw;
-  if (raw.startsWith("/")) return `${API_ORIGIN}${raw}`;
-  return `${API_ORIGIN}/${raw.replace(/^\/+/, "")}`;
+  const apiOrigin = currentApiOrigin();
+  if (raw.startsWith("/")) return `${apiOrigin}${raw}`;
+  return `${apiOrigin}/${raw.replace(/^\/+/, "")}`;
+};
+const fileNameFromPath = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.split("?")[0].split("#")[0];
+  return cleaned.split("/").filter(Boolean).pop() || "";
+};
+const resolveCheckupDownloadUrl = (value?: string | null) => {
+  const fileName = fileNameFromPath(value);
+  if (!fileName) return "";
+  return `${ACTIVE_API}/me/medical-summary/checkup-files/${encodeURIComponent(fileName)}/download`;
 };
 
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -1275,7 +1287,7 @@ export default function App() {
     if (!emergencyToken) throw new Error("Provide a valid token or URL.");
 
     if (isOnline) {
-      setPublicData(await api<PublicData>(`/emergency-access/${emergencyToken}`));
+      setPublicData(await api<PublicData>(`/emergency-access/${emergencyToken}/data`));
       return;
     }
 
@@ -1396,7 +1408,7 @@ export default function App() {
 
   const downloadCheckupFile = (value: string) =>
     run(async () => {
-      const url = resolveAssetUrl(value);
+      const url = resolveCheckupDownloadUrl(value) || resolveAssetUrl(value);
       if (!url) throw new Error("No PDF URL available.");
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) throw new Error("Cannot open this PDF on this device.");

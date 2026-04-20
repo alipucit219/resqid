@@ -143,6 +143,7 @@ export class AuthService {
   async forgotPassword(email: string) {
     const user = await this.userService.findByEmail(email, true);
     if (!user) {
+      this.logger.warn(`Password reset requested for non-existent email: ${email}`);
       return {
         message:
           "If an account exists for this email, reset instructions have been sent.",
@@ -176,6 +177,8 @@ export class AuthService {
     const result = await this.emailService.sendMail(emailPayload);
     if (result.fallback) {
       this.logger.warn(`Password reset fallback code for ${user.email}: ${rawCode}`);
+    } else {
+      this.logger.log(`Password reset code email sent for ${user.email}`);
     }
 
     return {

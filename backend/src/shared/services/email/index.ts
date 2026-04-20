@@ -22,13 +22,20 @@ export class EmailService {
       sendgridMail.setApiKey(sendGridConfig.apiKey);
 
       try {
-        await sendgridMail.send({
+        const [response] = await sendgridMail.send({
           from: sendGridConfig.from,
           to: payload.to,
           subject: payload.subject,
           text: payload.text,
           html: payload.html || payload.text,
         });
+        const messageId =
+          response?.headers?.["x-message-id"] ||
+          response?.headers?.["X-Message-Id"] ||
+          "unknown";
+        this.logger.log(
+          `SendGrid accepted email for ${payload.to} from ${sendGridConfig.from} (status: ${response?.statusCode || "unknown"}, messageId: ${messageId})`,
+        );
       } catch (error: any) {
         const statusCode = error?.code || error?.response?.statusCode;
         const responseBody = error?.response?.body;
