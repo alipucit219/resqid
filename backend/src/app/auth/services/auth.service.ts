@@ -144,10 +144,7 @@ export class AuthService {
     const user = await this.userService.findByEmail(email, true);
     if (!user) {
       this.logger.warn(`Password reset requested for non-existent email: ${email}`);
-      return {
-        message:
-          "If an account exists for this email, reset instructions have been sent.",
-      };
+      throw new BadRequestException("No account found for this email.");
     }
 
     const rawCode = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -182,8 +179,7 @@ export class AuthService {
     }
 
     return {
-      message:
-        "If an account exists for this email, reset instructions have been sent.",
+      message: "Password reset code sent to your email.",
       resetCode: result.fallback ? rawCode : undefined,
       usedFallback: result.fallback,
     };

@@ -480,7 +480,6 @@ export default function App() {
   const [aDraft, setADraft] = useState("");
   const [cDraft, setCDraft] = useState("");
   const [mDraft, setMDraft] = useState("");
-  const [checkupFileDraft, setCheckupFileDraft] = useState("");
   const [smDraft, setSmDraft] = useState("");
 
   const [contactForm, setContactForm] = useState({
@@ -580,7 +579,6 @@ export default function App() {
   const getActiveSummaries = () => mergeSummaryDraft(summaries, summary);
   const clearSummaryDraft = () => {
     setSummary({ ...EMPTY_SUMMARY, id: safeId() });
-    setCheckupFileDraft("");
     setSmDraft("");
   };
   const resetRegisterForm = () => {
@@ -1352,20 +1350,6 @@ export default function App() {
     }));
   };
 
-  const addCheckupFile = () => {
-    const value = checkupFileDraft.trim();
-    if (!value) return;
-    if (!isPdfReference(value)) {
-      pushToast("Only PDF files are allowed for checkup uploads.", "error");
-      return;
-    }
-    setSummary((prev) => ({
-      ...prev,
-      checkupFiles: [...prev.checkupFiles, value],
-    }));
-    setCheckupFileDraft("");
-  };
-
   const uploadCheckupFile = () =>
     run(async () => {
       if (!isOnline) throw new Error("Internet is required to upload a PDF.");
@@ -1436,7 +1420,6 @@ export default function App() {
 
   const editSummaryEntry = (entry: Summary) => {
     setSummary(entry);
-    setCheckupFileDraft("");
     setSmDraft("");
     setTab("profile");
     requestAnimationFrame(() => {
@@ -2412,10 +2395,6 @@ export default function App() {
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
               </View>
-              <View style={s.inlineRow}>
-                <TextInput style={s.inlineInput} placeholder="Checkup PDF URL or name (.pdf)" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
-                <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
-              </View>
               <Pressable style={s.subtleBtn} onPress={uploadCheckupFile}>
                 <Text style={s.subtleBtnText}>Upload Checkup PDF</Text>
               </Pressable>
@@ -2517,7 +2496,6 @@ export default function App() {
                     <Text style={s.publicLine}>Disease Starting Year: {item.diseaseStartingYear || "Not set"}</Text>
                     <Text style={s.publicLine}>Duration: {item.treatmentDuration || "Not set"}</Text>
                     <Text style={s.publicLine}>Status: {item.treatmentStatus || "Not set"}</Text>
-                    <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(item.checkupFiles)}</Text>
                     <Text style={s.publicLine}>Current Medications: {joinOrFallback(item.currentMedications)}</Text>
                     <Text style={s.publicLine}>Notes: {item.notes || "Not set"}</Text>
                   </View>
