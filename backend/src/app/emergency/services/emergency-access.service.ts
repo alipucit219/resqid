@@ -58,6 +58,244 @@ export class EmergencyAccessService {
     return `resqid://emergency-access/${token}`;
   }
 
+  private toText(value: unknown, fallback: string | null = null) {
+    const text = String(value ?? "").trim();
+    return text || fallback;
+  }
+
+  private toList(items: unknown) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    return items
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean);
+  }
+
+  private formatDate(value: Date | string | null | undefined) {
+    if (!value) {
+      return null;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  private mapMedicalProfile(profile: MedicalProfileDocument | null) {
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      bloodGroup: this.toText(profile.bloodGroup),
+      cnic: this.toText(profile.cnic),
+      age: profile.age ?? null,
+      address: this.toText(profile.address),
+      allergies: this.toList(profile.allergies),
+      chronicConditions: this.toList(profile.chronicConditions),
+      medications: this.toList(profile.medications),
+      pastSurgeries: this.toList(profile.pastSurgeries),
+      emergencyNotes: this.toText(profile.emergencyNotes),
+      dateOfBirth: this.formatDate(profile.dateOfBirth),
+      gender: this.toText(profile.gender),
+      updatedAt: this.formatDate((profile as any).updatedAt),
+    };
+  }
+
+  private mapMedicalSummary(summary: MedicalSummaryDocument | null) {
+    if (!summary) {
+      return null;
+    }
+
+    return {
+      hospitalName: this.toText(summary.hospitalName),
+      doctorName: this.toText(summary.doctorName),
+      diseaseStartingYear: summary.diseaseStartingYear ?? null,
+      treatmentDuration: this.toText(summary.treatmentDuration),
+      treatmentStatus: this.toText(summary.treatmentStatus),
+      checkupFiles: this.toList(summary.checkupFiles),
+      currentMedications: this.toList(summary.currentMedications),
+      notes: this.toText(summary.notes),
+      entries: Array.isArray(summary.entries) ? summary.entries : [],
+      updatedAt: this.formatDate((summary as any).updatedAt),
+    };
+  }
+
+  private mapEmergencyContacts(contacts: EmergencyContactDocument[]) {
+    return contacts.map((contact) => ({
+      name: this.toText(contact.name, "Unknown contact"),
+      phoneNumber: this.toText(contact.phoneNumber),
+      email: this.toText(contact.email),
+      relationship: this.toText(contact.relationship),
+      isPrimary: Boolean(contact.isPrimary),
+    }));
+  }
+
+  private buildIdentityDetails(
+    user: UserDocument,
+    medicalProfile: ReturnType<EmergencyAccessService["mapMedicalProfile"]>,
+  ) {
+    return {
+      fullName: this.toText(user.fullName, "Unknown User"),
+      email: this.toText(user.email),
+      phoneNumber: this.toText(user.phoneNumber),
+      cnic: this.toText(medicalProfile?.cnic ?? user.cnic),
+      address: this.toText(medicalProfile?.address ?? user.address),
+      dateOfBirth: this.formatDate(medicalProfile?.dateOfBirth ?? user.dateOfBirth),
+      age: medicalProfile?.age ?? null,
+      gender: this.toText(medicalProfile?.gender ?? user.gender),
+    };
+  }
+
+  private buildProfileHighlights(
+    medicalProfile: ReturnType<EmergencyAccessService["mapMedicalProfile"]>,
+    medicalSummary: ReturnType<EmergencyAccessService["mapMedicalSummary"]>,
+    emergencyContacts: ReturnType<EmergencyAccessService["mapEmergencyContacts"]>,
+  ) {
+    const primaryEmergencyContact =
+      emergencyContacts.find((contact) => contact.isPrimary) || emergencyContacts[0] || null;
+
+    return {
+      bloodGroup: this.toText(medicalProfile?.bloodGroup),
+      allergies: medicalProfile?.allergies || [],
+      chronicConditions: medicalProfile?.chronicConditions || [],
+      medications:
+        medicalSummary?.currentMedications?.length
+          ? medicalSummary.currentMedications
+          : medicalProfile?.medications || [],
+      emergencyNotes: this.toText(medicalProfile?.emergencyNotes),
+      treatmentStatus: this.toText(medicalSummary?.treatmentStatus),
+      primaryEmergencyContact,
+    };
+  }
+
+  private buildQrProfile(
+    identityDetails: ReturnType<EmergencyAccessService["buildIdentityDetails"]>,
+    medicalProfile: ReturnType<EmergencyAccessService["mapMedicalProfile"]>,
+    profileHighlights: ReturnType<EmergencyAccessService["buildProfileHighlights"]>,
+  ) {
+    return {
+      modalTitle: `${identityDetails.fullName || "User"} Emergency Profile`,
+      modalSubtitle:
+        "Identity details, emergency profile, and profile highlights for emergency responders.",
+      sections: [
+        {
+          key: "identity-details",
+          title: "Identity Details",
+          items: [
+            { label: "Full Name", value: identityDetails.fullName, type: "text" },
+            { label: "Email", value: identityDetails.email, type: "text" },
+            { label: "Phone Number", value: identityDetails.phoneNumber, type: "text" },
+            { label: "CNIC", value: identityDetails.cnic, type: "text" },
+            { label: "Address", value: identityDetails.address, type: "text" },
+            { label: "Date of Birth", value: identityDetails.dateOfBirth, type: "text" },
+            { label: "Age", value: identityDetails.age, type: "number" },
+            { label: "Gender", value: identityDetails.gender, type: "text" },
+          ],
+        },
+        {
+          key: "emergency-profile",
+          title: "Emergency Profile",
+          items: [
+            { label: "Blood Group", value: medicalProfile?.bloodGroup, type: "text" },
+            { label: "Allergies", value: medicalProfile?.allergies || [], type: "list" },
+            {
+              label: "Chronic Conditions",
+              value: medicalProfile?.chronicConditions || [],
+              type: "list",
+            },
+            { label: "Medications", value: medicalProfile?.medications || [], type: "list" },
+            {
+              label: "Past Surgeries",
+              value: medicalProfile?.pastSurgeries || [],
+              type: "list",
+            },
+            {
+              label: "Emergency Notes",
+              value: medicalProfile?.emergencyNotes,
+              type: "text",
+            },
+          ],
+        },
+        {
+          key: "profile-highlights",
+          title: "Profile Highlights",
+          items: [
+            { label: "Blood Group", value: profileHighlights.bloodGroup, type: "text" },
+            { label: "Allergies", value: profileHighlights.allergies, type: "list" },
+            {
+              label: "Active Medications",
+              value: profileHighlights.medications,
+              type: "list",
+            },
+            {
+              label: "Treatment Status",
+              value: profileHighlights.treatmentStatus,
+              type: "text",
+            },
+            {
+              label: "Primary Emergency Contact",
+              value: profileHighlights.primaryEmergencyContact
+                ? `${profileHighlights.primaryEmergencyContact.name} (${profileHighlights.primaryEmergencyContact.phoneNumber})`
+                : null,
+              type: "text",
+            },
+            {
+              label: "Emergency Notes",
+              value: profileHighlights.emergencyNotes,
+              type: "text",
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  private buildLockScreenPayload(
+    user: UserDocument,
+    medicalProfile: ReturnType<EmergencyAccessService["mapMedicalProfile"]>,
+    emergencyContacts: ReturnType<EmergencyAccessService["mapEmergencyContacts"]>,
+  ) {
+    return {
+      user: {
+        id: user._id.toString(),
+        fullName: this.toText(user.fullName, "Unknown User"),
+      },
+      notificationPanel: {
+        title: `${this.toText(user.fullName, "User")} Emergency Card`,
+        subtitle: "Triple tap to send SOS",
+        fields: [
+          {
+            label: "Address",
+            value: this.toText(medicalProfile?.address ?? user.address, "Not set"),
+          },
+          {
+            label: "Blood Group",
+            value: this.toText(medicalProfile?.bloodGroup, "Not set"),
+          },
+          {
+            label: "Allergies",
+            value:
+              medicalProfile?.allergies && medicalProfile.allergies.length > 0
+                ? medicalProfile.allergies
+                : ["None"],
+          },
+        ],
+      },
+      sos: {
+        gesture: "triple_tap",
+        action: "send_sos",
+        method: "POST",
+        endpoint: "/me/panic-alerts",
+        hasEmergencyContacts: emergencyContacts.length > 0,
+        message:
+          "Triple tap on the lock-screen emergency card to send an SOS alert to saved emergency contacts.",
+      },
+      profileUpdatedAt: medicalProfile?.updatedAt || null,
+    };
+  }
+
   private async ensureUserExists(userId: string) {
     const user = await this.userModel.findOne({
       _id: this.toObjectId(userId),
@@ -123,6 +361,23 @@ export class EmergencyAccessService {
       hasActiveToken: true,
       message: "QR token already exists. Use regenerate to rotate and fetch a new plain token.",
     };
+  }
+
+  async getLockScreenCardForUser(userId: string) {
+    const user = await this.ensureUserExists(userId);
+    const [profile, contacts] = await Promise.all([
+      this.profileModel.findOne({ userId: this.toObjectId(userId) }).lean(),
+      this.contactModel
+        .find({ userId: this.toObjectId(userId) })
+        .sort({ isPrimary: -1, createdAt: -1 })
+        .lean(),
+    ]);
+
+    return this.buildLockScreenPayload(
+      user,
+      this.mapMedicalProfile(profile as MedicalProfileDocument | null),
+      this.mapEmergencyContacts(contacts as EmergencyContactDocument[]),
+    );
   }
 
   async adminList(query: EmergencyAdminListQueryDto) {
@@ -210,46 +465,40 @@ export class EmergencyAccessService {
         .lean(),
     ]);
 
+    const medicalProfile = this.mapMedicalProfile(
+      profile as MedicalProfileDocument | null,
+    );
+    const medicalSummary = this.mapMedicalSummary(
+      summary as MedicalSummaryDocument | null,
+    );
+    const emergencyContacts = this.mapEmergencyContacts(
+      contacts as EmergencyContactDocument[],
+    );
+    const identityDetails = this.buildIdentityDetails(
+      user as UserDocument,
+      medicalProfile,
+    );
+    const profileHighlights = this.buildProfileHighlights(
+      medicalProfile,
+      medicalSummary,
+      emergencyContacts,
+    );
+
     return {
       user: {
         id: user._id.toString(),
         fullName: user.fullName,
       },
-      medicalProfile: profile
-        ? {
-            bloodGroup: profile.bloodGroup || null,
-            cnic: profile.cnic || null,
-            age: profile.age ?? null,
-            address: profile.address || null,
-            allergies: profile.allergies || [],
-            chronicConditions: profile.chronicConditions || [],
-            medications: profile.medications || [],
-            pastSurgeries: profile.pastSurgeries || [],
-            emergencyNotes: profile.emergencyNotes || null,
-            dateOfBirth: profile.dateOfBirth || null,
-            gender: profile.gender || null,
-          }
-        : null,
-      medicalSummary: summary
-        ? {
-            hospitalName: summary.hospitalName || null,
-            doctorName: summary.doctorName || null,
-            diseaseStartingYear: summary.diseaseStartingYear ?? null,
-            treatmentDuration: summary.treatmentDuration || null,
-            treatmentStatus: summary.treatmentStatus || null,
-            checkupFiles: summary.checkupFiles || [],
-            currentMedications: summary.currentMedications || [],
-            notes: summary.notes || null,
-            entries: Array.isArray(summary.entries) ? summary.entries : [],
-          }
-        : null,
-      emergencyContacts: contacts.map((contact) => ({
-        name: contact.name,
-        phoneNumber: contact.phoneNumber,
-        email: contact.email || null,
-        relationship: contact.relationship || null,
-        isPrimary: Boolean(contact.isPrimary),
-      })),
+      identityDetails,
+      medicalProfile,
+      medicalSummary,
+      emergencyContacts,
+      profileHighlights,
+      qrProfile: this.buildQrProfile(
+        identityDetails,
+        medicalProfile,
+        profileHighlights,
+      ),
       generatedAt: tokenRecord.lastGeneratedAt,
     };
   }

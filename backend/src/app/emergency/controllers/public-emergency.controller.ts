@@ -50,8 +50,10 @@ export class PublicEmergencyController {
     @Res() res: Response,
   ) {
     const data = await this.emergencyAccessService.resolvePublicToken(token);
+    const identity: any = data.identityDetails || {};
     const profile: any = data.medicalProfile || {};
     const summary: any = data.medicalSummary || {};
+    const highlights: any = data.profileHighlights || {};
     const contacts = Array.isArray(data.emergencyContacts)
       ? data.emergencyContacts
       : [];
@@ -180,6 +182,17 @@ export class PublicEmergencyController {
 
       <section class="grid">
         <article class="card">
+          <h2>Identity Details</h2>
+          <p class="line"><strong>Full Name:</strong> ${this.escapeHtml(this.renderValue(identity.fullName, data.user?.fullName || "Unknown User"))}</p>
+          <p class="line"><strong>Email:</strong> ${this.escapeHtml(this.renderValue(identity.email))}</p>
+          <p class="line"><strong>Phone Number:</strong> ${this.escapeHtml(this.renderValue(identity.phoneNumber))}</p>
+          <p class="line"><strong>CNIC:</strong> ${this.escapeHtml(this.renderValue(identity.cnic))}</p>
+          <p class="line"><strong>Address:</strong> ${this.escapeHtml(this.renderValue(identity.address))}</p>
+          <p class="line"><strong>Date of Birth:</strong> ${this.escapeHtml(this.renderValue(identity.dateOfBirth))}</p>
+          <p class="line"><strong>Gender:</strong> ${this.escapeHtml(this.renderValue(identity.gender))}</p>
+        </article>
+
+        <article class="card">
           <h2>Medical Profile</h2>
           <p class="line"><strong>Blood Group:</strong> ${this.escapeHtml(this.renderValue(profile.bloodGroup))}</p>
           <p class="line"><strong>CNIC:</strong> ${this.escapeHtml(this.renderValue(profile.cnic))}</p>
@@ -201,6 +214,16 @@ export class PublicEmergencyController {
           <p class="line"><strong>Status:</strong> ${this.escapeHtml(this.renderValue(summary.treatmentStatus))}</p>
           <p class="line"><strong>Current Medications:</strong> ${this.escapeHtml(this.renderList(summary.currentMedications))}</p>
           <p class="line"><strong>Notes:</strong> ${this.escapeHtml(this.renderValue(summary.notes))}</p>
+        </article>
+
+        <article class="card">
+          <h2>Profile Highlights</h2>
+          <p class="line"><strong>Blood Group:</strong> ${this.escapeHtml(this.renderValue(highlights.bloodGroup))}</p>
+          <p class="line"><strong>Allergies:</strong> ${this.escapeHtml(this.renderList(highlights.allergies))}</p>
+          <p class="line"><strong>Medications:</strong> ${this.escapeHtml(this.renderList(highlights.medications))}</p>
+          <p class="line"><strong>Treatment Status:</strong> ${this.escapeHtml(this.renderValue(highlights.treatmentStatus))}</p>
+          <p class="line"><strong>Primary Contact:</strong> ${this.escapeHtml(this.renderValue(highlights.primaryEmergencyContact ? `${highlights.primaryEmergencyContact.name} (${highlights.primaryEmergencyContact.phoneNumber})` : null))}</p>
+          <p class="line"><strong>Emergency Notes:</strong> ${this.escapeHtml(this.renderValue(highlights.emergencyNotes))}</p>
         </article>
 
         <article class="card">

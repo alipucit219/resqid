@@ -26,8 +26,16 @@
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.muji273.mobileapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,7 +54,9 @@
           "locationWhenInUsePermission": "Allow ResQID to use your location for SOS alerts."
         }
       ],
-      "./plugins/show-when-locked"
+      "./plugins/soft-input-mode",
+      "./plugins/show-when-locked",
+      "./plugins/fullscreen-intent"
     ]
   }
 }

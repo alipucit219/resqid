@@ -191,6 +191,16 @@ export class MeEmergencyController {
     return await this.emergencyAccessService.getQrForUser(req.user.id);
   }
 
+  @ApiOperation({
+    summary: "Get requesting user's lock-screen emergency notification payload",
+  })
+  @Get("lock-screen-card")
+  async getLockScreenCard(
+    @AuthenticatedRequestPayload() req: IAuthenticatedRequest,
+  ) {
+    return await this.emergencyAccessService.getLockScreenCardForUser(req.user.id);
+  }
+
   @ApiOperation({ summary: "Regenerate emergency access QR for requesting user" })
   @Post("qr/regenerate")
   async regenerateQr(@AuthenticatedRequestPayload() req: IAuthenticatedRequest) {
