@@ -13,6 +13,13 @@ import {
 } from "../schemas/medical-profile.schema";
 import { EmergencyAdminListQueryDto } from "../dtos/emergency-admin-list-query.dto";
 
+type AdminListResponse = {
+  data: Array<Record<string, unknown>>;
+  total: number;
+};
+
+type AdminDetailResponse = Record<string, unknown>;
+
 @Injectable()
 export class MedicalProfileService {
   constructor(
@@ -69,7 +76,7 @@ export class MedicalProfileService {
     );
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<AdminListResponse> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;
@@ -128,7 +135,7 @@ export class MedicalProfileService {
     };
   }
 
-  async adminGetByUserId(userId: string) {
+  async adminGetByUserId(userId: string): Promise<AdminDetailResponse> {
     await this.ensureUserExists(userId);
     const profile = await this.medicalProfileModel
       .findOne({ userId: this.toObjectId(userId) })

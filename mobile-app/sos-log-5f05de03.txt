@@ -1,0 +1,112 @@
+--------- beginning of main
+04-28 05:05:12.173 D/SosAccessibility(13181): SosAccessibilityService connected
+04-28 05:05:20.962 I/ReactNativeJS(13181): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:05:21.962 W/ReactNativeJS(13181): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:05:22.501 I/ReactNativeJS(13181): logging out.
+04-28 05:05:23.409 I/ReactNativeJS(13181): logging out.
+04-28 05:05:39.799 I/ReactNativeJS(13181): Registering for push notifications...
+04-28 05:05:41.059 I/ReactNativeJS(13181): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:05:41.060 I/ReactNativeJS(13181): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:05:41.095 I/ReactNativeJS(13181): Push token unchanged, skipping registration.
+04-28 05:06:31.475 W/ReactNativeJS(13181): Cannot connect to Metro.
+04-28 05:06:31.475 W/ReactNativeJS(13181): 
+04-28 05:06:31.475 W/ReactNativeJS(13181): Try the following to fix the issue:
+04-28 05:06:31.475 W/ReactNativeJS(13181): - Ensure that Metro is running and available on the same network
+04-28 05:06:31.475 W/ReactNativeJS(13181): - Ensure that your device/emulator is connected to your machine and has USB debugging enabled - run 'adb devices' to see a list of connected devices
+04-28 05:06:31.475 W/ReactNativeJS(13181): - If you're on a physical device connected to the same machine, run 'adb reverse tcp:8081 tcp:8081' to forward requests from your device
+04-28 05:06:31.475 W/ReactNativeJS(13181): - If your device is on the same Wi-Fi network, set 'Debug server host & port for device' in 'Dev settings' to your machine's IP address and the port of the local dev server - e.g. 10.0.1.1:8081
+04-28 05:06:31.475 W/ReactNativeJS(13181): 
+04-28 05:06:31.475 W/ReactNativeJS(13181): URL: localhost:8082
+04-28 05:06:31.475 W/ReactNativeJS(13181): 
+04-28 05:06:31.475 W/ReactNativeJS(13181): Error: undefined
+04-28 05:09:23.963 W/ReactNativeJS(13181): reading dataString is deprecated, use data instead
+04-28 05:09:23.965 I/ReactNativeJS(13181): '🔔 Notification received:', '{\n  "date": 1777334963455,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777334963455,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Saleem sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: No message",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: No message",\n          "title": "🚨 Saleem sent you an alert",\n          "body": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777334963459483%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: No message",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Saleem sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 0,\n        "longitude": 0,\n        "senderName": "Saleem",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777334963459483%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:09:41.046 I/ReactNativeJS(13181): '🔔 Notification received:', '{\n  "date": 1777334980847,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777334980847,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Saleem sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: No message",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: No message",\n          "title": "🚨 Saleem sent you an alert",\n          "body": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777334980851316%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: No message",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Saleem sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 0,\n        "longitude": 0,\n        "senderName": "Saleem",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777334980851316%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:11:02.287 I/ReactNativeJS(13181): '🔔 Notification received:', '{\n  "date": 1777335061465,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777335061465,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Saleem sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: No message",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: No message",\n          "title": "🚨 Saleem sent you an alert",\n          "body": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777335061469720%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":0,\\"longitude\\":0,\\"senderName\\":\\"Saleem\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: No message",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Saleem sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 0,\n        "longitude": 0,\n        "senderName": "Saleem",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777335061469720%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:15:10.829 D/SosAccessibility(18519): SosAccessibilityService connected
+04-28 05:15:27.342 I/ReactNativeJS(18519): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:15:28.488 W/ReactNativeJS(18519): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:15:29.139 I/ReactNativeJS(18519): logging out.
+04-28 05:15:30.137 I/ReactNativeJS(18519): logging out.
+04-28 05:17:22.375 I/ReactNativeJS(18519): logging out.
+04-28 05:17:22.500 I/ReactNativeJS(18519): logging out.
+04-28 05:17:47.581 I/ReactNativeJS(18519): Registering for push notifications...
+04-28 05:17:49.132 I/ReactNativeJS(18519): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:17:49.134 I/ReactNativeJS(18519): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:17:49.171 I/ReactNativeJS(18519): Push token unchanged, skipping registration.
+04-28 05:18:17.923 D/SosAccessibility(21822): SosAccessibilityService connected
+04-28 05:19:09.972 D/SosAccessibility(24601): SosAccessibilityService connected
+04-28 05:19:25.181 I/ReactNativeJS(24601): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:19:26.285 W/ReactNativeJS(24601): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:19:26.928 I/ReactNativeJS(24601): logging out.
+04-28 05:19:27.892 I/ReactNativeJS(24601): logging out.
+04-28 05:20:34.113 I/ReactNativeJS(24601): Registering for push notifications...
+04-28 05:20:34.929 I/ReactNativeJS(24601): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:20:34.931 I/ReactNativeJS(24601): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:20:34.959 I/ReactNativeJS(24601): Push token unchanged, skipping registration.
+04-28 05:21:58.409 W/ReactNativeJS(24601): [notifee] no background event handler has been set. Set a handler via the "onBackgroundEvent" method.
+04-28 05:27:31.631 I/ReactNativeJS(24601): logging out.
+04-28 05:27:31.709 I/ReactNativeJS(24601): Registering for push notifications...
+04-28 05:27:32.770 I/ReactNativeJS(24601): logging out.
+04-28 05:27:32.790 I/ReactNativeJS(24601): Registering for push notifications...
+04-28 05:27:33.626 I/ReactNativeJS(24601): '🔔 Notification received:', '{\n  "date": 1777336053476,\n  "request": {\n    "trigger": null,\n    "content": {\n      "autoDismiss": true,\n      "title": "ResQID alert queued",\n      "badge": null,\n      "sticky": false,\n      "sound": "default",\n      "body": "Your SOS alert was saved offline and will sync automatically.",\n      "subtitle": null\n    },\n    "identifier": "867e90d5-28a4-4e94-a3ca-a48295d63338"\n  }\n}'
+04-28 05:27:34.401 I/ReactNativeJS(24601): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:27:34.403 I/ReactNativeJS(24601): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:27:34.511 I/ReactNativeJS(24601): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:27:34.513 I/ReactNativeJS(24601): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:27:34.547 I/ReactNativeJS(24601): Push token unchanged, skipping registration.
+04-28 05:27:34.567 I/ReactNativeJS(24601): Push token unchanged, skipping registration.
+04-28 05:27:46.223 I/ReactNativeJS(24601): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:27:47.397 W/ReactNativeJS(24601): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:27:48.096 I/ReactNativeJS(24601): logging out.
+04-28 05:27:48.513 I/ReactNativeJS(24601): logging out.
+04-28 05:29:08.471 D/SosAccessibility( 2794): SosAccessibilityService connected
+04-28 05:29:18.441 I/ReactNativeJS( 2794): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:29:19.507 W/ReactNativeJS( 2794): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:29:20.080 I/ReactNativeJS( 2794): logging out.
+04-28 05:29:20.963 I/ReactNativeJS( 2794): logging out.
+04-28 05:29:38.025 I/ReactNativeJS( 2794): Registering for push notifications...
+04-28 05:29:39.256 I/ReactNativeJS( 2794): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:29:39.258 I/ReactNativeJS( 2794): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:29:39.296 I/ReactNativeJS( 2794): Push token unchanged, skipping registration.
+04-28 05:29:49.354 I/ReactNativeJS( 2794): '🔔 Notification received:', '{\n  "date": 1777336187215,\n  "request": {\n    "trigger": null,\n    "content": {\n      "autoDismiss": true,\n      "title": "ResQID alert synced",\n      "badge": null,\n      "sticky": false,\n      "sound": "default",\n      "body": "Your offline SOS alert has been sent.",\n      "subtitle": null\n    },\n    "identifier": "419c4b28-eb5b-4167-852d-01aaf47e0bad"\n  }\n}'
+04-28 05:32:56.424 I/ReactNativeJS( 2794): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:32:57.490 W/ReactNativeJS( 2794): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:32:58.085 I/ReactNativeJS( 2794): logging out.
+04-28 05:32:58.659 I/ReactNativeJS( 2794): logging out.
+04-28 05:33:13.212 W/ReactNativeJS( 2794): Cannot connect to Metro.
+04-28 05:33:13.212 W/ReactNativeJS( 2794): 
+04-28 05:33:13.212 W/ReactNativeJS( 2794): Try the following to fix the issue:
+04-28 05:33:13.212 W/ReactNativeJS( 2794): - Ensure that Metro is running and available on the same network
+04-28 05:33:13.212 W/ReactNativeJS( 2794): - Ensure that your device/emulator is connected to your machine and has USB debugging enabled - run 'adb devices' to see a list of connected devices
+04-28 05:33:13.212 W/ReactNativeJS( 2794): - If you're on a physical device connected to the same machine, run 'adb reverse tcp:8081 tcp:8081' to forward requests from your device
+04-28 05:33:13.212 W/ReactNativeJS( 2794): - If your device is on the same Wi-Fi network, set 'Debug server host & port for device' in 'Dev settings' to your machine's IP address and the port of the local dev server - e.g. 10.0.1.1:8081
+04-28 05:33:13.212 W/ReactNativeJS( 2794): 
+04-28 05:33:13.212 W/ReactNativeJS( 2794): URL: localhost:8082
+04-28 05:33:13.212 W/ReactNativeJS( 2794): 
+04-28 05:33:13.212 W/ReactNativeJS( 2794): Error: undefined
+04-28 05:33:19.442 I/ReactNativeJS( 2794): Registering for push notifications...
+04-28 05:33:20.257 I/ReactNativeJS( 2794): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:33:20.258 I/ReactNativeJS( 2794): 'Expo Push Token:', 'ExponentPushToken[OKA0m_Npschz5FhHLxLOOi]'
+04-28 05:33:20.283 I/ReactNativeJS( 2794): Push token unchanged, skipping registration.
+04-28 05:37:50.453 I/ReactNativeJS(21963): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:37:51.535 W/ReactNativeJS(21963): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:37:52.123 I/ReactNativeJS(21963): logging out.
+04-28 05:37:52.989 I/ReactNativeJS(21963): logging out.
+04-28 05:38:13.267 I/ReactNativeJS(21963): Registering for push notifications...
+04-28 05:38:39.959 D/SosAccessibility(21963): SosAccessibilityService connected
+04-28 05:38:51.815 I/ReactNativeJS(21963): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:38:51.817 I/ReactNativeJS(21963): 'Expo Push Token:', 'ExponentPushToken[S0LywIIh6cbE3KcjTgXLpf]'
+04-28 05:38:52.866 I/ReactNativeJS(21963): 'Expo push token registered:', 'ExponentPushToken[S0LywIIh6cbE3KcjTgXLpf]'
+04-28 05:40:22.098 I/ReactNativeJS(21963): '🔔 Notification received:', '{\n  "date": 1777336822044,\n  "request": {\n    "trigger": null,\n    "content": {\n      "autoDismiss": true,\n      "title": "ResQID emergency alert",\n      "badge": null,\n      "sticky": false,\n      "sound": "default",\n      "body": "Some WhatsApp messages failed because recipient phone numbers are not in the allowed testing list. Add recipients to your Meta app\'s allowed numbers.",\n      "subtitle": null\n    },\n    "identifier": "2f8500f7-7f50-47c8-bc7f-5c466127b93f"\n  }\n}'
+04-28 05:40:56.350 W/ReactNativeJS(21963): Cannot connect to Metro.
+04-28 05:40:56.350 W/ReactNativeJS(21963): 
+04-28 05:40:56.350 W/ReactNativeJS(21963): Try the following to fix the issue:
+04-28 05:40:56.350 W/ReactNativeJS(21963): - Ensure that Metro is running and available on the same network
+04-28 05:40:56.350 W/ReactNativeJS(21963): - Ensure that your device/emulator is connected to your machine and has USB debugging enabled - run 'adb devices' to see a list of connected devices
+04-28 05:40:56.350 W/ReactNativeJS(21963): - If you're on a physical device connected to the same machine, run 'adb reverse tcp:8081 tcp:8081' to forward requests from your device
+04-28 05:40:56.350 W/ReactNativeJS(21963): - If your device is on the same Wi-Fi network, set 'Debug server host & port for device' in 'Dev settings' to your machine's IP address and the port of the local dev server - e.g. 10.0.1.1:8081
+04-28 05:40:56.350 W/ReactNativeJS(21963): 
+04-28 05:40:56.350 W/ReactNativeJS(21963): URL: localhost:8082
+04-28 05:40:56.350 W/ReactNativeJS(21963): 
+04-28 05:40:56.350 W/ReactNativeJS(21963): Error: undefined

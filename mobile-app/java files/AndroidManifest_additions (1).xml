@@ -1,0 +1,63 @@
+<!--
+    ============================================================
+    1. ADD THESE PERMISSIONS inside <manifest> before <application>
+    ============================================================
+-->
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
+    tools:ignore="ProtectedPermissions" />
+
+
+<!--
+    ============================================================
+    2. ADD THESE inside <application> tag
+    ============================================================
+-->
+
+<!--
+    The Accessibility Service — survives app kill on ALL OEMs including
+    Xiaomi MIUI. OS itself protects it once user enables it in Settings.
+-->
+<service
+    android:name=".SosAccessibilityService"
+    android:exported="true"
+    android:label="@string/accessibility_service_label"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/accessibility_service_config" />
+</service>
+
+<!-- SOS dispatch service — fires the actual API call -->
+<service
+    android:name=".SosIntentService"
+    android:enabled="true"
+    android:exported="false" />
+
+<!-- Backup boot receiver -->
+<receiver
+    android:name=".PowerButtonBootReceiver"
+    android:enabled="true"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+    </intent-filter>
+</receiver>
+
+
+<!--
+    ============================================================
+    3. ADD THESE to android/app/src/main/res/values/strings.xml
+    ============================================================
+
+    <string name="accessibility_service_label">ResQID Emergency SOS</string>
+    <string name="accessibility_service_description">
+        Allows ResQID to detect triple power button press to send
+        an emergency SOS alert even when the app is closed.
+    </string>
+-->

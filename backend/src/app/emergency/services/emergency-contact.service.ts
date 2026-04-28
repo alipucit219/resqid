@@ -16,6 +16,11 @@ import {
   EmergencyContactDocument,
 } from "../schemas/emergency-contact.schema";
 
+type AdminListResponse = {
+  data: Array<Record<string, unknown>>;
+  total: number;
+};
+
 @Injectable()
 export class EmergencyContactService {
   constructor(
@@ -155,7 +160,7 @@ export class EmergencyContactService {
     return { message: "Emergency contact deleted successfully." };
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<AdminListResponse> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;

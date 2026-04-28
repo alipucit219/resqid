@@ -39,13 +39,17 @@ export class AdminEmergencyController {
 
   @ApiOperation({ summary: "List medical profiles" })
   @Get("medical-profiles")
-  async listMedicalProfiles(@Query() query: EmergencyAdminListQueryDto) {
+  async listMedicalProfiles(
+    @Query() query: EmergencyAdminListQueryDto,
+  ): Promise<unknown> {
     return await this.medicalProfileService.adminList(query);
   }
 
   @ApiOperation({ summary: "Get medical profile by user id" })
   @Get("medical-profiles/:userId")
-  async getMedicalProfileByUserId(@Param("userId") userId: string) {
+  async getMedicalProfileByUserId(
+    @Param("userId") userId: string,
+  ): Promise<unknown> {
     return await this.medicalProfileService.adminGetByUserId(userId);
   }
 
@@ -60,7 +64,9 @@ export class AdminEmergencyController {
 
   @ApiOperation({ summary: "List medical summaries" })
   @Get("medical-summaries")
-  async listMedicalSummaries(@Query() query: EmergencyAdminListQueryDto) {
+  async listMedicalSummaries(
+    @Query() query: EmergencyAdminListQueryDto,
+  ): Promise<unknown> {
     return await this.medicalSummaryService.adminList(query);
   }
 
@@ -75,7 +81,9 @@ export class AdminEmergencyController {
 
   @ApiOperation({ summary: "List emergency contacts" })
   @Get("emergency-contacts")
-  async listEmergencyContacts(@Query() query: EmergencyAdminListQueryDto) {
+  async listEmergencyContacts(
+    @Query() query: EmergencyAdminListQueryDto,
+  ): Promise<unknown> {
     return await this.emergencyContactService.adminList(query);
   }
 
@@ -125,13 +133,15 @@ export class AdminEmergencyController {
 
   @ApiOperation({ summary: "List panic alerts" })
   @Get("panic-alerts")
-  async listPanicAlerts(@Query() query: EmergencyAdminListQueryDto) {
+  async listPanicAlerts(
+    @Query() query: EmergencyAdminListQueryDto,
+  ): Promise<unknown> {
     return await this.panicAlertService.adminList(query);
   }
 
   @ApiOperation({ summary: "Get panic alert details" })
   @Get("panic-alerts/:id")
-  async getPanicAlertDetail(@Param("id") id: string) {
+  async getPanicAlertDetail(@Param("id") id: string): Promise<unknown> {
     return await this.panicAlertService.adminDetail(id);
   }
 }

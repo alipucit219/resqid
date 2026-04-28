@@ -12,6 +12,11 @@ import {
   MedicalSummaryDocument,
 } from "../schemas/medical-summary.schema";
 
+type AdminListResponse = {
+  data: Array<Record<string, unknown>>;
+  total: number;
+};
+
 @Injectable()
 export class MedicalSummaryService {
   constructor(
@@ -63,7 +68,7 @@ export class MedicalSummaryService {
     );
   }
 
-  async adminList(query: EmergencyAdminListQueryDto) {
+  async adminList(query: EmergencyAdminListQueryDto): Promise<AdminListResponse> {
     const page = Number(query.page ?? 0);
     const limit = Number(query.limit ?? 10);
     const skip = page * limit;

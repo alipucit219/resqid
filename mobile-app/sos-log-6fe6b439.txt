@@ -1,0 +1,499 @@
+--------- beginning of main
+--------- beginning of system
+04-28 05:07:35.395 D/SosAccessibility( 4765): SosAccessibilityService connected
+04-28 05:07:45.554 I/ReactNativeJS( 4765): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:07:46.140 W/ReactNativeJS( 4765): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:07:46.517 I/ReactNativeJS( 4765): logging out.
+04-28 05:07:47.098 I/ReactNativeJS( 4765): logging out.
+04-28 05:09:07.480 I/ReactNativeJS( 4765): Registering for push notifications...
+04-28 05:09:08.859 I/ReactNativeJS( 4765): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:09:08.860 I/ReactNativeJS( 4765): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:09:08.989 I/ReactNativeJS( 4765): Push token unchanged, skipping registration.
+04-28 05:09:17.229 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:17.229 D/SosAccessibility( 4765): Volume up press count: 1
+04-28 05:09:18.078 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:18.079 D/SosAccessibility( 4765): Volume up press count: 2
+04-28 05:09:18.447 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:18.447 D/SosAccessibility( 4765): Volume up press count: 3
+04-28 05:09:18.668 E/SosAccessibility( 4765): Failed to read medical data: bloodGroup
+04-28 05:09:18.668 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:133)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:18.668 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:18.668 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:18.674 E/SosAccessibility( 4765): Failed to read medical data: allergies
+04-28 05:09:18.674 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:134)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:18.674 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:18.674 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:18.677 E/SosAccessibility( 4765): Failed to read medical data: address
+04-28 05:09:18.677 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:135)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:18.677 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:18.677 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:18.792 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:18.807 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:19.173 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:36.257 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:36.258 D/SosAccessibility( 4765): Volume up press count: 1
+04-28 05:09:36.541 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:36.541 D/SosAccessibility( 4765): Volume up press count: 2
+04-28 05:09:36.903 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:36.903 D/SosAccessibility( 4765): Volume up press count: 3
+04-28 05:09:36.920 E/SosAccessibility( 4765): Failed to read medical data: bloodGroup
+04-28 05:09:36.920 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:133)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:36.920 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:36.920 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:36.931 E/SosAccessibility( 4765): Failed to read medical data: allergies
+04-28 05:09:36.931 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:134)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:36.931 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:36.931 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:36.939 E/SosAccessibility( 4765): Failed to read medical data: address
+04-28 05:09:36.939 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:135)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:09:36.939 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:09:36.939 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:09:37.143 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:37.341 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:37.543 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:39.388 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:39.591 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:39.759 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:39.976 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:40.186 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:09:40.413 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:10:51.104 D/SosAccessibility( 4765): Volume up received. lockScreenActive=false, hasActiveSession=true
+04-28 05:10:51.381 D/SosAccessibility( 4765): Volume up received. lockScreenActive=false, hasActiveSession=true
+04-28 05:10:51.653 D/SosAccessibility( 4765): Volume up received. lockScreenActive=false, hasActiveSession=true
+04-28 05:10:54.279 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:10:54.280 D/SosAccessibility( 4765): Volume up press count: 1
+04-28 05:10:54.537 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:10:54.537 D/SosAccessibility( 4765): Volume up press count: 2
+04-28 05:10:54.869 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:10:54.869 D/SosAccessibility( 4765): Volume up press count: 3
+04-28 05:10:54.893 E/SosAccessibility( 4765): Failed to read medical data: bloodGroup
+04-28 05:10:54.893 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:133)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:10:54.893 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:10:54.893 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:10:54.897 E/SosAccessibility( 4765): Failed to read medical data: allergies
+04-28 05:10:54.897 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:134)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:10:54.897 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:10:54.897 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:10:54.900 E/SosAccessibility( 4765): Failed to read medical data: address
+04-28 05:10:54.900 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:135)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:10:54.900 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:10:54.900 E/SosAccessibility( 4765): 	... 20 more
+04-28 05:10:55.178 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:10:55.323 D/SosAccessibility( 4765): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:11:03.116 E/SosAccessibility( 4765): POST failed
+04-28 05:11:03.116 E/SosAccessibility( 4765): java.net.SocketTimeoutException: timeout
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.Okio$3.newTimeoutException(Okio.java:214)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.AsyncTimeout.exit(AsyncTimeout.java:263)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.AsyncTimeout$2.read(AsyncTimeout.java:217)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.RealBufferedSource.indexOf(RealBufferedSource.java:307)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.RealBufferedSource.indexOf(RealBufferedSource.java:301)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.RealBufferedSource.readUtf8LineStrict(RealBufferedSource.java:197)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.http.Http1xStream.readResponse(Http1xStream.java:188)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.http.Http1xStream.readResponseHeaders(Http1xStream.java:129)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.http.HttpEngine.readNetworkResponse(HttpEngine.java:750)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.http.HttpEngine.readResponse(HttpEngine.java:622)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.huc.HttpURLConnectionImpl.execute(HttpURLConnectionImpl.java:475)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.huc.HttpURLConnectionImpl.getResponse(HttpURLConnectionImpl.java:411)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.huc.HttpURLConnectionImpl.getResponseCode(HttpURLConnectionImpl.java:542)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.huc.DelegatingHttpsURLConnection.getResponseCode(DelegatingHttpsURLConnection.java:106)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.internal.huc.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:30)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.postSosAlert(SosAccessibilityService.java:246)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.lambda$triggerSos$1(SosAccessibilityService.java:152)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.$r8$lambda$_UpxTVYMPecBJEepZ_uaYTF1O5o(Unknown Source:0)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at java.lang.Thread.run(Thread.java:923)
+04-28 05:11:03.116 E/SosAccessibility( 4765): Caused by: java.net.SocketException: Socket closed
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at java.net.SocketInputStream.read(SocketInputStream.java:209)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at java.net.SocketInputStream.read(SocketInputStream.java:144)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.org.conscrypt.ConscryptEngineSocket$SSLInputStream.readFromSocket(ConscryptEngineSocket.java:994)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.org.conscrypt.ConscryptEngineSocket$SSLInputStream.processDataFromSocket(ConscryptEngineSocket.java:958)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.org.conscrypt.ConscryptEngineSocket$SSLInputStream.readUntilDataAvailable(ConscryptEngineSocket.java:873)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.org.conscrypt.ConscryptEngineSocket$SSLInputStream.read(ConscryptEngineSocket.java:846)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.Okio$2.read(Okio.java:138)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	at com.android.okhttp.okio.AsyncTimeout$2.read(AsyncTimeout.java:213)
+04-28 05:11:03.116 E/SosAccessibility( 4765): 	... 17 more
+04-28 05:11:03.123 E/SosAccessibility( 4765): Failed to queue offline alert
+04-28 05:11:03.123 E/SosAccessibility( 4765): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.queueOfflineAlert(SosAccessibilityService.java:300)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.lambda$triggerSos$1(SosAccessibilityService.java:162)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService.$r8$lambda$_UpxTVYMPecBJEepZ_uaYTF1O5o(Unknown Source:0)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at com.anonymous.mobileapp.SosAccessibilityService$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at java.lang.Thread.run(Thread.java:923)
+04-28 05:11:03.123 E/SosAccessibility( 4765): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:11:03.123 E/SosAccessibility( 4765): 	... 13 more
+04-28 05:12:14.467 I/ReactNativeJS( 4765): '🔔 Notification received:', '{\n  "date": 1777335134405,\n  "request": {\n    "trigger": null,\n    "content": {\n      "autoDismiss": true,\n      "title": "ResQID emergency alert",\n      "badge": null,\n      "sticky": false,\n      "sound": "default",\n      "body": "Your emergency alert was processed.",\n      "subtitle": null\n    },\n    "identifier": "e5271811-11d6-4804-9cd6-d197e6e1232f"\n  }\n}'
+--------- beginning of crash
+04-28 05:12:40.065 D/SosAccessibility( 7282): SosAccessibilityService connected
+04-28 05:12:45.182 I/ReactNativeJS( 7282): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:12:45.781 W/ReactNativeJS( 7282): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:12:46.124 I/ReactNativeJS( 7282): logging out.
+04-28 05:12:46.673 I/ReactNativeJS( 7282): logging out.
+04-28 05:14:44.475 I/ReactNativeJS( 7282): Registering for push notifications...
+04-28 05:14:45.630 I/ReactNativeJS( 7282): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:14:45.631 I/ReactNativeJS( 7282): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:14:45.649 I/ReactNativeJS( 7282): Push token unchanged, skipping registration.
+04-28 05:15:06.006 I/ReactNativeJS( 7282): '🔔 Notification received:', '{\n  "date": 1777335305935,\n  "request": {\n    "trigger": null,\n    "content": {\n      "autoDismiss": true,\n      "title": "ResQID emergency alert",\n      "badge": null,\n      "sticky": false,\n      "sound": "default",\n      "body": "Your emergency alert was processed.",\n      "subtitle": null\n    },\n    "identifier": "54a50964-b346-4952-b7b2-ed616d99378f"\n  }\n}'
+04-28 05:15:29.743 D/SosAccessibility( 8308): SosAccessibilityService connected
+04-28 05:16:57.811 I/ReactNativeJS( 8308): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:16:58.413 W/ReactNativeJS( 8308): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:16:58.782 I/ReactNativeJS( 8308): logging out.
+04-28 05:16:59.365 I/ReactNativeJS( 8308): logging out.
+04-28 05:17:22.326 I/ReactNativeJS( 8308): logging out.
+04-28 05:17:22.411 I/ReactNativeJS( 8308): logging out.
+04-28 05:17:22.767 I/ReactNativeJS( 8308): Registering for push notifications...
+04-28 05:17:24.093 I/ReactNativeJS( 8308): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:17:24.095 I/ReactNativeJS( 8308): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:17:24.110 I/ReactNativeJS( 8308): Push token unchanged, skipping registration.
+04-28 05:18:04.900 D/SosAccessibility( 9904): SosAccessibilityService connected
+04-28 05:20:09.121 D/SosAccessibility(11201): SosAccessibilityService connected
+04-28 05:20:23.498 I/ReactNativeJS(11201): Running "main" with {"rootTag":1,"initialProps":{},"fabric":true}
+04-28 05:20:24.213 W/ReactNativeJS(11201): 'SafeAreaView has been deprecated and will be removed in a future release. Please use \'react-native-safe-area-context\' instead. See https://github.com/th3rdwave/react-native-safe-area-context', { [Stack] name: 'Stack' }
+04-28 05:20:24.638 I/ReactNativeJS(11201): logging out.
+04-28 05:20:25.235 I/ReactNativeJS(11201): logging out.
+04-28 05:21:03.877 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:21:05.178 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:21:05.179 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:21:05.194 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:21:30.208 W/ReactNativeJS(11201): reading dataString is deprecated, use data instead
+04-28 05:21:30.211 I/ReactNativeJS(11201): '🔔 Notification received:', '{\n  "date": 1777335689841,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777335689841,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Sued sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: Hh",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":31.3554424,\\"longitude\\":74.2067748,\\"senderName\\":\\"Sued\\",\\"message\\":\\"Hh\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: Hh",\n          "title": "🚨 Sued sent you an alert",\n          "body": "{\\"latitude\\":31.3554424,\\"longitude\\":74.2067748,\\"senderName\\":\\"Sued\\",\\"message\\":\\"Hh\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777335689846211%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":31.3554424,\\"longitude\\":74.2067748,\\"senderName\\":\\"Sued\\",\\"message\\":\\"Hh\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: Hh",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Sued sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 31.3554424,\n        "longitude": 74.2067748,\n        "senderName": "Sued",\n        "message": "Hh",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777335689846211%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:21:47.896 I/ReactNativeJS(11201): '🔔 Notification received:', '{\n  "date": 1777335707788,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777335707788,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Sued sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: There??",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: There??",\n          "title": "🚨 Sued sent you an alert",\n          "body": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777335707793892%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: There??",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Sued sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 31.3554519,\n        "longitude": 74.2067802,\n        "senderName": "Sued",\n        "message": "There??",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777335707793892%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:21:50.210 I/ReactNativeJS(11201): '🔔 Notification received:', '{\n  "date": 1777335710015,\n  "request": {\n    "trigger": {\n      "remoteMessage": {\n        "originalPriority": 1,\n        "sentTime": 1777335710015,\n        "notification": {\n          "usesDefaultVibrateSettings": false,\n          "color": null,\n          "channelId": "sos-alerts-v2",\n          "visibility": null,\n          "sound": null,\n          "tag": null,\n          "bodyLocalizationArgs": null,\n          "imageUrl": null,\n          "title": "🚨 Sued sent you an alert",\n          "ticker": null,\n          "eventTime": null,\n          "body": "Message: There??",\n          "titleLocalizationKey": null,\n          "notificationPriority": null,\n          "icon": null,\n          "usesDefaultLightSettings": false,\n          "sticky": false,\n          "link": null,\n          "titleLocalizationArgs": null,\n          "bodyLocalizationKey": null,\n          "usesDefaultSound": false,\n          "clickAction": null,\n          "localOnly": false,\n          "lightSettings": null,\n          "notificationCount": null\n        },\n        "data": {\n          "channelId": "sos-alerts-v2",\n          "categoryId": "sos_alert",\n          "dataString": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n          "message": "Message: There??",\n          "title": "🚨 Sued sent you an alert",\n          "body": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n          "scopeKey": "@muji273/mobile-app",\n          "experienceId": "@muji273/mobile-app",\n          "projectId": "52fdbbbf-44a2-4353-adbf-52fbc1eaf838"\n        },\n        "to": null,\n        "ttl": 2419200,\n        "collapseKey": "com.anonymous.mobileapp",\n        "messageType": null,\n        "priority": 1,\n        "from": "965289718600",\n        "messageId": "0:1777335710020859%cc3bae11cc3bae11"\n      },\n      "type": "push"\n    },\n    "content": {\n      "dataString": "{\\"latitude\\":31.3554519,\\"longitude\\":74.2067802,\\"senderName\\":\\"Sued\\",\\"message\\":\\"There??\\",\\"type\\":\\"SOS\\"}",\n      "categoryIdentifier": "sos_alert",\n      "autoDismiss": true,\n      "body": "Message: There??",\n      "sound": "default",\n      "sticky": false,\n      "title": "🚨 Sued sent you an alert",\n      "badge": null,\n      "priority": "high",\n      "subtitle": null,\n      "data": {\n        "latitude": 31.3554519,\n        "longitude": 74.2067802,\n        "senderName": "Sued",\n        "message": "There??",\n        "type": "SOS"\n      }\n    },\n    "identifier": "0:1777335710020859%cc3bae11cc3bae11"\n  }\n}'
+04-28 05:21:57.916 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:21:57.917 D/SosAccessibility(11201): Volume up press count: 1
+04-28 05:21:58.308 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:21:58.308 D/SosAccessibility(11201): Volume up press count: 2
+04-28 05:21:58.315 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:21:58.315 D/SosAccessibility(11201): Volume up press count: 3
+04-28 05:21:58.552 E/SosAccessibility(11201): Failed to read medical data: bloodGroup
+04-28 05:21:58.552 E/SosAccessibility(11201): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:133)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:21:58.552 E/SosAccessibility(11201): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:21:58.552 E/SosAccessibility(11201): 	... 20 more
+04-28 05:21:58.559 E/SosAccessibility(11201): Failed to read medical data: allergies
+04-28 05:21:58.559 E/SosAccessibility(11201): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:134)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:21:58.559 E/SosAccessibility(11201): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:21:58.559 E/SosAccessibility(11201): 	... 20 more
+04-28 05:21:58.568 E/SosAccessibility(11201): Failed to read medical data: address
+04-28 05:21:58.568 E/SosAccessibility(11201): android.database.sqlite.SQLiteCantOpenDatabaseException: Cannot open database '/data/user/0/com.anonymous.mobileapp/databases/resqid.db': File /data/user/0/com.anonymous.mobileapp/databases/resqid.db doesn't exist
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:257)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:210)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java:516)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:206)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java:198)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java:922)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java:902)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:793)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:740)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.readMedicalData(SosAccessibilityService.java:189)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.triggerSos(SosAccessibilityService.java:135)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.anonymous.mobileapp.SosAccessibilityService.onKeyEvent(SosAccessibilityService.java:111)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$2.onKeyEvent(AccessibilityService.java:2103)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.executeMessage(AccessibilityService.java:2339)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.os.Looper.loop(Looper.java:263)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.app.ActivityThread.main(ActivityThread.java:8299)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at java.lang.reflect.Method.invoke(Native Method)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:612)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1006)
+04-28 05:21:58.568 E/SosAccessibility(11201): Caused by: android.database.sqlite.SQLiteCantOpenDatabaseException: unknown error (code 14 SQLITE_CANTOPEN): Could not open database
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.nativeOpen(Native Method)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java:229)
+04-28 05:21:58.568 E/SosAccessibility(11201): 	... 20 more
+04-28 05:21:58.580 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:21:58.582 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:21:58.745 D/SosAccessibility(11201): Volume up received. lockScreenActive=true, hasActiveSession=true
+04-28 05:24:57.080 I/ReactNativeJS(11201): logging out.
+04-28 05:24:57.137 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:24:57.314 I/ReactNativeJS(11201): logging out.
+04-28 05:24:57.325 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:24:57.642 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:24:57.643 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:24:57.654 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:24:57.922 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:24:57.924 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:24:57.938 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:25:01.916 I/ReactNativeJS(11201): logging out.
+04-28 05:25:01.933 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:25:02.067 I/ReactNativeJS(11201): logging out.
+04-28 05:25:02.075 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:25:02.358 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:25:02.360 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:25:02.376 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:25:02.488 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:25:02.491 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:25:02.501 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:25:13.904 I/ReactNativeJS(11201): logging out.
+04-28 05:25:13.923 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:25:14.069 I/ReactNativeJS(11201): logging out.
+04-28 05:25:14.080 I/ReactNativeJS(11201): Registering for push notifications...
+04-28 05:25:14.331 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:25:14.333 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:25:14.348 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:25:14.615 I/ReactNativeJS(11201): 'Using Expo projectId for push notifications:', '52fdbbbf-44a2-4353-adbf-52fbc1eaf838'
+04-28 05:25:14.616 I/ReactNativeJS(11201): 'Expo Push Token:', 'ExponentPushToken[-y9hTRDo9zXGcKSvBqi2uv]'
+04-28 05:25:14.628 I/ReactNativeJS(11201): Push token unchanged, skipping registration.
+04-28 05:26:13.773 D/SosAccessibility(16549): SosAccessibilityService connected

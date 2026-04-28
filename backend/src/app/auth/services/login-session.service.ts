@@ -11,6 +11,16 @@ type CreateLoginSessionPayload = {
   userAgent?: string;
 };
 
+type DeleteSessionResult = {
+  acknowledged: boolean;
+  deletedCount: number;
+};
+
+type DeleteExpiredSessionsResult = {
+  deletedCount: number;
+  affectedUserIds: string[];
+};
+
 @Injectable()
 export class LoginSessionService {
   constructor(
@@ -44,8 +54,13 @@ export class LoginSessionService {
     });
   }
 
-  async deleteSession(id: string) {
-    return await this.sessionModel.deleteOne({ _id: this.toObjectId(id) });
+  async deleteSession(id: string): Promise<DeleteSessionResult> {
+    const response = await this.sessionModel.deleteOne({ _id: this.toObjectId(id) });
+
+    return {
+      acknowledged: Boolean(response.acknowledged),
+      deletedCount: response.deletedCount ?? 0,
+    };
   }
 
   async deleteOtherSessions(userId: string, currentSessionId: string) {
@@ -57,7 +72,7 @@ export class LoginSessionService {
     return response.deletedCount ?? 0;
   }
 
-  async deleteExpiredSessions() {
+  async deleteExpiredSessions(): Promise<DeleteExpiredSessionsResult> {
     const today = new Date();
     const MILLISECONDS_IN_A_THIRTY_DAYS = MILLISECONDS_IN_A_DAY * 30;
     const tokensExpectedTimeToLive = new Date(

@@ -17,7 +17,6 @@ import {
   Text,
   TextInput,
   View,
-  LogBox,
 } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -26,32 +25,20 @@ import * as SQLite from "expo-sqlite";
 import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Constants from "expo-constants";
-import * as Device from "expo-device";
 import notifee, {
   AndroidCategory,
   AndroidColor,
   EventType,
+  AndroidForegroundServiceType,
   AndroidImportance,
   AndroidStyle,
   AndroidVisibility,
   AuthorizationStatus,
-} from "react-native-notify-kit";
+} from 'react-native-notify-kit';
 import AccessibilityOnboarding from "./AccessibilityOnboarding";
 
-
-
-type AuthScreen = "login" | "register" | "forgot" | "public";
-type Tab = "home" | "profile" | "summary" | "contacts" | "notifications";
-type NotificationItem = {
-  id: string;
-  senderName: string;
-  message: string;
-  latitude: number;
-  longitude: number;
-  createdAt: string;
-  isRead: boolean;
-};
+type AuthScreen = "login" | "register" | "forgot" | "verifyReset" | "reset" | "public";
+type Tab = "home" | "profile" | "summary" | "contacts";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type QueueKind = "profile_upsert" | "summary_upsert" | "contact_upsert" | "contact_delete" | "panic_alert";
 type Gender = "male" | "female" | "other";
@@ -64,19 +51,6 @@ type AuthFieldErrors = Partial<
     string
   >
 >;
-type SosSetupStatus = {
-  notificationsAllowed: boolean | null;
-  batteryOptimizationEnabled: boolean | null;
-  powerManagerLabel: string;
-  powerManagerSupported: boolean;
-};
-type AccessibilityBridge = {
-  isAccessibilityServiceEnabled?: () => Promise<boolean>;
-  openAccessibilitySettings?: () => void;
-  syncSosConfig?: (apiBase: string, authToken: string) => void;
-  clearSosConfig?: () => void;
-  flushPendingSosQueue?: () => Promise<number>;
-};
 
 type User = {
   id: string;
@@ -103,7 +77,8 @@ type Profile = {
   dateOfBirth: string;
   gender: string;
 };
-type Summary = {
+type SummaryEntry = {
+  id: string;
   hospitalName: string;
   doctorName: string;
   diseaseStartingYear: string;
@@ -113,34 +88,79 @@ type Summary = {
   currentMedications: string[];
   notes: string;
 };
+type Summary = SummaryEntry;
 type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
-type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Contact[]; qr: QrData | null; savedAt: string };
-type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
+type Snapshot = { user: User; profile: Profile; summary: Summary; summaries: Summary[]; contacts: Contact[]; qr: QrData | null; savedAt: string };
+type PublicSectionItem = { label: string; value: unknown; type?: "text" | "number" | "list" };
+type PublicSection = { key: string; title: string; items: PublicSectionItem[] };
+type PublicQrProfile = { modalTitle?: string | null; modalSubtitle?: string | null; sections?: PublicSection[] };
+type PublicData = {
+  user: { fullName: string };
+  identityDetails?: Record<string, unknown>;
+  medicalProfile: Record<string, unknown>;
+  medicalSummary?: Record<string, unknown>;
+  emergencyContacts: Record<string, unknown>[];
+  profileHighlights?: Record<string, unknown>;
+  qrProfile?: PublicQrProfile;
+  generatedAt?: string | null;
+};
 type QueueRow = { id: number; kind: QueueKind; payload: string };
+type SosSetupStatus = {
+  notificationsAllowed: boolean | null;
+  batteryOptimizationEnabled: boolean | null;
+  powerManagerLabel: string;
+  powerManagerSupported: boolean;
+};
+type AccessibilityBridge = {
+  isAccessibilityServiceEnabled?: () => Promise<boolean>;
+  openAccessibilitySettings?: () => void;
+  syncSosConfig?: (apiBase: string, authToken: string) => void;
+  clearSosConfig?: () => void;
+  flushPendingSosQueue?: () => Promise<number>;
+};
 
 const normalizeApiBase = (value: string) => {
   const candidate = value.replace(/\/$/, "");
   return /\/v\d+$/i.test(candidate) ? candidate : `${candidate}/v2`;
+};
+const currentApiOrigin = () => ACTIVE_API.replace(/\/v\d+$/i, "");
+const inferDevApiBase = () => {
+  if (Platform.OS === "web") return "http://localhost:8000";
+
+  const scriptUrl = String(NativeModules?.SourceCode?.scriptURL || "").trim();
+  if (!scriptUrl) return "";
+
+  try {
+    const parsed = new URL(scriptUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+      return "http://localhost:8000";
+    }
+    return `${parsed.protocol}//${parsed.hostname}:8000`;
+  } catch {
+    return "";
+  }
 };
 const resolveApiBases = () => {
   const webBase = process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
   const iosBase = process.env.EXPO_PUBLIC_IOS_API_BASE_URL;
   const androidBase = process.env.EXPO_PUBLIC_ANDROID_API_BASE_URL;
   const nativeBase = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL;
+  const inferredBase = inferDevApiBase();
   const fallbackBase =
     Platform.OS === "web"
       ? "http://localhost:8000"
       : Platform.OS === "android"
-        ? "http://192.168.100.9:8000"
-        : "http://localhost:8000";
+        ? inferredBase || "http://192.168.10.4:8000"
+        : inferredBase || "http://localhost:8000";
   const priority =
     Platform.OS === "web"
       ? [webBase, nativeBase, fallbackBase]
       : Platform.OS === "ios"
-        ? [iosBase, nativeBase, fallbackBase]
-        : [androidBase, nativeBase, "http://10.0.2.2:8000", fallbackBase];
+        ? [inferredBase, iosBase, nativeBase, fallbackBase]
+        : [inferredBase, androidBase, nativeBase, "http://192.168.10.4:8000", fallbackBase];
 
-  const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, fallbackBase]
+  const withAlternates = [...priority, webBase, iosBase, androidBase, nativeBase, inferredBase, fallbackBase]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .map((item) => normalizeApiBase(item));
@@ -150,8 +170,6 @@ const resolveApiBases = () => {
 const API_BASES = resolveApiBases();
 let ACTIVE_API = API_BASES[0];
 const API = ACTIVE_API;
-const API_ORIGIN = API.replace(/\/v\d+$/i, "");
-const currentApiOrigin = () => ACTIVE_API.replace(/\/v\d+$/i, "");
 const normalizeEmergencyUrl = (value?: string | null) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -168,6 +186,31 @@ const normalizeEmergencyUrl = (value?: string | null) => {
   } catch {
     return raw;
   }
+};
+const resolveAssetUrl = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const apiOrigin = currentApiOrigin();
+  if (raw.startsWith("/")) return `${apiOrigin}${raw}`;
+  return `${apiOrigin}/${raw.replace(/^\/+/, "")}`;
+};
+const fileNameFromPath = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.split("?")[0].split("#")[0];
+  return cleaned.split("/").filter(Boolean).pop() || "";
+};
+const displayCheckupFileLabel = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Uploaded PDF";
+  const fileName = fileNameFromPath(raw);
+  return fileName || raw;
+};
+const resolveCheckupDownloadUrl = (value?: string | null) => {
+  const fileName = fileNameFromPath(value);
+  if (!fileName) return "";
+  return `${ACTIVE_API}/me/medical-summary/checkup-files/${encodeURIComponent(fileName)}/download`;
 };
 
 const BLOOD = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -211,6 +254,7 @@ const EMPTY_PROFILE: Profile = {
   gender: "",
 };
 const EMPTY_SUMMARY: Summary = {
+  id: "",
   hospitalName: "",
   doctorName: "",
   diseaseStartingYear: "",
@@ -243,26 +287,10 @@ const ymdToDate = (value: string) => {
 const tokenFrom = (v: string) =>
   v.includes("/emergency-access/")
     ? v.split("/emergency-access/")[1].split("?")[0].split("#")[0].trim()
+    : v.includes("emergency-access:")
+      ? v.split("emergency-access:")[1].split("?")[0].split("#")[0].replace(/^\/+/, "").trim()
     : v.trim();
-const toTextValue = (value: unknown, fallback = "Not set") => {
-  const text = String(value ?? "").trim();
-  return text || fallback;
-};
-const buildLockScreenPreview = (baseUser: User, medicalProfile: Profile) => {
-  const address = toTextValue(medicalProfile.address || baseUser.address, "Not set");
-  const bloodGroup = toTextValue(medicalProfile.bloodGroup, "Not set");
-  const allergies = joinOrFallback(medicalProfile.allergies);
-
-  return {
-    title: `${toTextValue(baseUser.fullName, "User")} Emergency Card`,
-    body: `Address: ${address} | Blood Group: ${bloodGroup} | Allergies: ${allergies}`,
-    expandedText: `Address: ${address}\nBlood Group: ${bloodGroup}\nAllergies: ${allergies}\nTriple-press Volume Up to send SOS.`,
-  };
-};
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
-
-// Auth expiry callback — set by the App component, invoked by api() on 401/403
-let onAuthExpired: (() => void) | null = null;
 const netErr = (e: unknown) =>
   /network request failed|fetch failed|failed to fetch|abort|timeout|timed out/i.test(errMsg(e));
 const labelCount = (count: number, singular: string, plural?: string) =>
@@ -270,10 +298,51 @@ const labelCount = (count: number, singular: string, plural?: string) =>
 const isValidPhoneNumber = (value: string) => PHONE_REGEX.test(String(value || "").trim());
 const isValidCnic = (value: string) => CNIC_REGEX.test(String(value || "").trim());
 const isPdfReference = (value: string) => PDF_FILE_REGEX.test(String(value || "").trim());
+const safeId = () => `summary-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const normalizeSummaryEntry = (value: any, fallbackId?: string): Summary => ({
+  id: String(value?.id || fallbackId || safeId()),
+  hospitalName: String(value?.hospitalName || ""),
+  doctorName: String(value?.doctorName || ""),
+  diseaseStartingYear:
+    value?.diseaseStartingYear !== undefined && value?.diseaseStartingYear !== null
+      ? String(value.diseaseStartingYear)
+      : "",
+  treatmentDuration: String(value?.treatmentDuration || ""),
+  treatmentStatus: String(value?.treatmentStatus || ""),
+  checkupFiles: arr(value?.checkupFiles),
+  currentMedications: arr(value?.currentMedications),
+  notes: String(value?.notes || ""),
+});
+const hasSummaryContent = (value: Summary) =>
+  Boolean(
+    value.hospitalName.trim() ||
+      value.doctorName.trim() ||
+      value.diseaseStartingYear.trim() ||
+      value.treatmentDuration.trim() ||
+      value.treatmentStatus.trim() ||
+      value.notes.trim() ||
+      value.checkupFiles.length ||
+      value.currentMedications.length,
+  );
+const sortSummaryEntries = (items: Summary[]) =>
+  [...items].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+const mergeSummaryDraft = (items: Summary[], draft: Summary) => {
+  const cleanItems = items.filter((item) => item.id !== draft.id);
+  if (!hasSummaryContent(draft)) return sortSummaryEntries(cleanItems);
+  return sortSummaryEntries([{ ...draft, id: draft.id || safeId() }, ...cleanItems]);
+};
 const joinOrFallback = (items: string[], fallback = "None") => {
   const clean = items.map((item) => item.trim()).filter(Boolean);
   return clean.length ? clean.join(", ") : fallback;
 };
+const toTextValue = (value: unknown, fallback = "Not set") => {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+};
+const toListValue = (value: unknown) =>
+  Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
 const toNumericYear = (value: string) => {
   const year = Number(value);
   if (!Number.isInteger(year)) return null;
@@ -293,6 +362,157 @@ const toContactBody = (payload: any) => ({
   relationship: payload?.relationship ? String(payload.relationship).trim() : undefined,
   isPrimary: Boolean(payload?.isPrimary),
 });
+const buildIdentityDetails = (baseUser: User, medicalProfile: Profile) => ({
+  fullName: baseUser.fullName || "Unknown User",
+  email: baseUser.email || null,
+  phoneNumber: baseUser.phoneNumber || null,
+  cnic: medicalProfile.cnic || baseUser.cnic || null,
+  address: medicalProfile.address || baseUser.address || null,
+  dateOfBirth: medicalProfile.dateOfBirth || baseUser.dateOfBirth || null,
+  age: medicalProfile.age.trim() ? Number(medicalProfile.age.trim()) : null,
+  gender: medicalProfile.gender || baseUser.gender || null,
+});
+const buildProfileHighlights = (medicalProfile: Profile, medicalSummary: Summary, emergencyContacts: Contact[]) => {
+  const primaryEmergencyContact = emergencyContacts.find((contact) => contact.isPrimary) || emergencyContacts[0] || null;
+  return {
+    bloodGroup: medicalProfile.bloodGroup || null,
+    allergies: medicalProfile.allergies,
+    chronicConditions: medicalProfile.chronicConditions,
+    medications: medicalSummary.currentMedications.length ? medicalSummary.currentMedications : medicalProfile.medications,
+    emergencyNotes: medicalProfile.emergencyNotes || null,
+    treatmentStatus: medicalSummary.treatmentStatus || null,
+    primaryEmergencyContact: primaryEmergencyContact
+      ? {
+          name: primaryEmergencyContact.name,
+          phoneNumber: primaryEmergencyContact.phoneNumber,
+        }
+      : null,
+  };
+};
+const buildQrProfile = (
+  identityDetails: ReturnType<typeof buildIdentityDetails>,
+  medicalProfile: Profile,
+  profileHighlights: ReturnType<typeof buildProfileHighlights>,
+): PublicQrProfile => ({
+  modalTitle: `${identityDetails.fullName || "User"} Emergency Profile`,
+  modalSubtitle: "Identity details, emergency profile, and profile highlights for emergency responders.",
+  sections: [
+    {
+      key: "identity-details",
+      title: "Identity Details",
+      items: [
+        { label: "Full Name", value: identityDetails.fullName, type: "text" },
+        { label: "Email", value: identityDetails.email, type: "text" },
+        { label: "Phone Number", value: identityDetails.phoneNumber, type: "text" },
+        { label: "CNIC", value: identityDetails.cnic, type: "text" },
+        { label: "Address", value: identityDetails.address, type: "text" },
+        { label: "Date of Birth", value: identityDetails.dateOfBirth, type: "text" },
+        { label: "Age", value: identityDetails.age, type: "number" },
+        { label: "Gender", value: identityDetails.gender, type: "text" },
+      ],
+    },
+    {
+      key: "emergency-profile",
+      title: "Emergency Profile",
+      items: [
+        { label: "Blood Group", value: medicalProfile.bloodGroup, type: "text" },
+        { label: "Allergies", value: medicalProfile.allergies, type: "list" },
+        { label: "Chronic Conditions", value: medicalProfile.chronicConditions, type: "list" },
+        { label: "Medications", value: medicalProfile.medications, type: "list" },
+        { label: "Emergency Notes", value: medicalProfile.emergencyNotes, type: "text" },
+      ],
+    },
+    {
+      key: "profile-highlights",
+      title: "Profile Highlights",
+      items: [
+        { label: "Blood Group", value: profileHighlights.bloodGroup, type: "text" },
+        { label: "Allergies", value: profileHighlights.allergies, type: "list" },
+        { label: "Active Medications", value: profileHighlights.medications, type: "list" },
+        { label: "Treatment Status", value: profileHighlights.treatmentStatus, type: "text" },
+        {
+          label: "Primary Emergency Contact",
+          value: profileHighlights.primaryEmergencyContact
+            ? `${profileHighlights.primaryEmergencyContact.name} (${profileHighlights.primaryEmergencyContact.phoneNumber})`
+            : null,
+          type: "text",
+        },
+        { label: "Emergency Notes", value: profileHighlights.emergencyNotes, type: "text" },
+      ],
+    },
+  ],
+});
+const buildFallbackPublicSections = (data: PublicData): PublicSection[] => {
+  const identity = data.identityDetails || {};
+  const medicalProfile = data.medicalProfile || {};
+  const medicalSummary = data.medicalSummary || {};
+  const highlights = data.profileHighlights || {};
+
+  return [
+    {
+      key: "identity-details",
+      title: "Identity Details",
+      items: [
+        { label: "Full Name", value: identity.fullName || data.user?.fullName, type: "text" },
+        { label: "Email", value: identity.email, type: "text" },
+        { label: "Phone Number", value: identity.phoneNumber, type: "text" },
+        { label: "CNIC", value: identity.cnic || medicalProfile.cnic, type: "text" },
+        { label: "Address", value: identity.address || medicalProfile.address, type: "text" },
+        { label: "Date of Birth", value: identity.dateOfBirth, type: "text" },
+        { label: "Age", value: identity.age ?? medicalProfile.age, type: "number" },
+        { label: "Gender", value: identity.gender || medicalProfile.gender, type: "text" },
+      ],
+    },
+    {
+      key: "emergency-profile",
+      title: "Emergency Profile",
+      items: [
+        { label: "Blood Group", value: medicalProfile.bloodGroup, type: "text" },
+        { label: "Allergies", value: medicalProfile.allergies, type: "list" },
+        { label: "Chronic Conditions", value: medicalProfile.chronicConditions, type: "list" },
+        {
+          label: "Medications",
+          value: toListValue(medicalSummary.currentMedications).length ? medicalSummary.currentMedications : medicalProfile.medications,
+          type: "list",
+        },
+        { label: "Emergency Notes", value: medicalProfile.emergencyNotes, type: "text" },
+      ],
+    },
+    {
+      key: "profile-highlights",
+      title: "Profile Highlights",
+      items: [
+        { label: "Blood Group", value: highlights.bloodGroup || medicalProfile.bloodGroup, type: "text" },
+        { label: "Allergies", value: highlights.allergies || medicalProfile.allergies, type: "list" },
+        { label: "Active Medications", value: highlights.medications || medicalSummary.currentMedications || medicalProfile.medications, type: "list" },
+        { label: "Treatment Status", value: highlights.treatmentStatus || medicalSummary.treatmentStatus, type: "text" },
+        {
+          label: "Primary Emergency Contact",
+          value: highlights.primaryEmergencyContact
+            ? `${toTextValue((highlights.primaryEmergencyContact as Record<string, unknown>).name)} (${toTextValue((highlights.primaryEmergencyContact as Record<string, unknown>).phoneNumber)})`
+            : null,
+          type: "text",
+        },
+        { label: "Emergency Notes", value: highlights.emergencyNotes || medicalProfile.emergencyNotes, type: "text" },
+      ],
+    },
+  ];
+};
+const formatPublicSectionValue = (value: unknown, type?: PublicSectionItem["type"]) => {
+  if (type === "list") return joinOrFallback(toListValue(value));
+  return toTextValue(value);
+};
+const buildLockScreenPreview = (baseUser: User, medicalProfile: Profile) => {
+  const address = toTextValue(medicalProfile.address || baseUser.address, "Not set");
+  const bloodGroup = toTextValue(medicalProfile.bloodGroup, "Not set");
+  const allergies = joinOrFallback(medicalProfile.allergies);
+
+  return {
+    title: `${toTextValue(baseUser.fullName, "User")} Emergency Card`,
+    body: `Address: ${address} | Blood Group: ${bloodGroup} | Allergies: ${allergies}`,
+    expandedText: `Address: ${address}\nBlood Group: ${bloodGroup}\nAllergies: ${allergies}\nTriple-press Volume Up to send SOS.`,
+  };
+};
 
 async function api<T>(path: string, method: Method = "GET", token?: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
@@ -318,11 +538,6 @@ async function api<T>(path: string, method: Method = "GET", token?: string, body
         data = await res.json();
       } catch {
         data = null;
-      }
-
-      if (res.status === 401 || res.status === 403) {
-        onAuthExpired?.();
-        throw new Error("Session expired. Please log in again.");
       }
 
       if (!res.ok) {
@@ -402,6 +617,11 @@ type FieldProps = {
   secureTextEntry?: boolean;
   keyboardType?: ComponentProps<typeof TextInput>["keyboardType"];
   autoCapitalize?: ComponentProps<typeof TextInput>["autoCapitalize"];
+  autoComplete?: ComponentProps<typeof TextInput>["autoComplete"];
+  textContentType?: ComponentProps<typeof TextInput>["textContentType"];
+  importantForAutofill?: ComponentProps<typeof TextInput>["importantForAutofill"];
+  returnKeyType?: ComponentProps<typeof TextInput>["returnKeyType"];
+  autoCorrect?: boolean;
   right?: ReactNode;
   multiline?: boolean;
 };
@@ -414,6 +634,11 @@ function Field({
   secureTextEntry,
   keyboardType,
   autoCapitalize = "none",
+  autoComplete,
+  textContentType,
+  importantForAutofill = "auto",
+  returnKeyType,
+  autoCorrect = false,
   right,
   multiline = false,
 }: FieldProps) {
@@ -429,6 +654,12 @@ function Field({
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        importantForAutofill={importantForAutofill}
+        returnKeyType={returnKeyType}
+        autoCorrect={autoCorrect}
+        disableFullscreenUI={Platform.OS === "android"}
         multiline={multiline}
       />
       {right}
@@ -436,87 +667,24 @@ function Field({
   );
 }
 
-// for notification
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-async function registerForPushNotificationsAsync() {
-  if (!Device.isDevice) {
-    console.log("Must use physical device");
-    return;
-  }
-
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("sos-alerts-v2", {
-      name: "SOS Alerts",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 500, 200, 500],
-      sound: "default",
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") {
-    console.log("Permission not granted");
-    return;
-  }
-
-  const projectIdCandidates = [
-    Constants?.expoConfig?.extra?.eas?.projectId,
-    Constants?.easConfig?.projectId,
-    process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
-    process.env.EAS_PROJECT_ID,
-  ];
-  const projectId = projectIdCandidates.find(
-    (value) => typeof value === "string" && value.trim().length > 0
-  );
-
-  if (!projectId) {
-    throw new Error(
-      'Missing Expo EAS projectId for push notifications. Set "EXPO_PUBLIC_EAS_PROJECT_ID" in .env or expose "extra.eas.projectId" from app config.'
-    );
-  }
-
-  const expoPushToken = (
-    await Notifications.getExpoPushTokenAsync({ projectId })
-  ).data;
-
-  console.log("Using Expo projectId for push notifications:", projectId);
-  console.log("Expo Push Token:", expoPushToken);
-  return expoPushToken;
-}
-
 async function startSosNotification(lockScreenPreview?: ReturnType<typeof buildLockScreenPreview>) {
   await notifee.requestPermission();
+  await notifee.prewarmForegroundService().catch(() => undefined);
 
   const channelId = await notifee.createChannel({
     id: SOS_CHANNEL_ID,
-    name: "SOS Alerts",
+    name: 'SOS Alerts',
     importance: AndroidImportance.HIGH,
     visibility: AndroidVisibility.PUBLIC,
-    description: "Persistent SOS controls visible from the lock screen.",
+    description: 'Persistent SOS controls visible from the lock screen.',
   });
 
   const notification = {
     id: SOS_GUARD_NOTIFICATION_ID,
-    title: lockScreenPreview?.title || "🚨 ResQID SOS Ready",
+    title: lockScreenPreview?.title || '🚨 ResQID SOS Ready',
     body:
       lockScreenPreview?.body ||
-      "Triple-press Volume Up to send an alert, or use the Accessibility button when it is available.",
+      'Triple-press Volume Up to send an alert, or use the Accessibility button when it is available.',
     android: {
       channelId,
       category: AndroidCategory.CALL,
@@ -527,25 +695,37 @@ async function startSosNotification(lockScreenPreview?: ReturnType<typeof buildL
       onlyAlertOnce: true,
       lightUpScreen: true,
       visibility: AndroidVisibility.PUBLIC,
-      pressAction: { id: "open_emergency", launchActivity: "default" },
+      pressAction: { id: 'open_emergency', launchActivity: 'default' },
       style: {
         type: AndroidStyle.BIGTEXT as AndroidStyle.BIGTEXT,
-        title: lockScreenPreview?.title || "Lock-screen SOS controls stay active",
+        title: lockScreenPreview?.title || 'Lock-screen SOS controls stay active',
         text:
           lockScreenPreview?.expandedText ||
-          "Triple-press Volume Up to trigger SOS from the accessibility service, or tap here to open the in-app SOS screen.",
+          'Triple-press Volume Up to trigger SOS from the accessibility service, or tap here to open the in-app SOS screen.',
       },
       actions: [
         {
-          title: "Open SOS Screen",
-          pressAction: { id: "open_emergency", launchActivity: "default" },
+          title: 'Open SOS Screen',
+          pressAction: { id: 'open_emergency', launchActivity: 'default' },
         },
       ],
     },
   };
 
-  await notifee.displayNotification(notification);
+  try {
+    await notifee.displayNotification({
+      ...notification,
+      android: {
+        ...notification.android,
+        asForegroundService: true,
+        foregroundServiceTypes: [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_LOCATION],
+      },
+    });
+  } catch {
+    await notifee.displayNotification(notification);
+  }
 }
+
 
 export default function App() {
   const [db, setDb] = useState<SQLite.SQLiteDatabase | null>(null);
@@ -563,6 +743,11 @@ export default function App() {
   const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotEmailError, setForgotEmailError] = useState("");
+  const [resetCodeInput, setResetCodeInput] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [register, setRegister] = useState({ ...EMPTY_REGISTER });
   const [registerErrors, setRegisterErrors] = useState<AuthFieldErrors>({});
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -572,7 +757,8 @@ export default function App() {
   const [showProfileDobPicker, setShowProfileDobPicker] = useState(false);
 
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
-  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [summary, setSummary] = useState<Summary>({ ...EMPTY_SUMMARY, id: safeId() });
+  const [summaries, setSummaries] = useState<Summary[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [qr, setQr] = useState<QrData | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -580,7 +766,6 @@ export default function App() {
   const [aDraft, setADraft] = useState("");
   const [cDraft, setCDraft] = useState("");
   const [mDraft, setMDraft] = useState("");
-  const [checkupFileDraft, setCheckupFileDraft] = useState("");
   const [smDraft, setSmDraft] = useState("");
 
   const [contactForm, setContactForm] = useState({
@@ -594,6 +779,8 @@ export default function App() {
   const [showContactForm, setShowContactForm] = useState(false);
 
   const [showSos, setShowSos] = useState(false);
+  const [showQrSheet, setShowQrSheet] = useState(false);
+  const [showIdentitySheet, setShowIdentitySheet] = useState(false);
   const [panicMsg, setPanicMsg] = useState("");
   const [lastLoc, setLastLoc] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -601,29 +788,17 @@ export default function App() {
   const [publicData, setPublicData] = useState<PublicData | null>(null);
   const [showPublicProfileModal, setShowPublicProfileModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
-  const [showQrSheet, setShowQrSheet] = useState(false);
-  const [showIdentitySheet, setShowIdentitySheet] = useState(false);
   const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [pendingEmergencyLaunch, setPendingEmergencyLaunch] = useState(false);
   const [sosSetupStatus, setSosSetupStatus] = useState<SosSetupStatus>(EMPTY_SOS_SETUP_STATUS);
   const [accessibilityEnabled, setAccessibilityEnabled] = useState(Platform.OS !== "android");
   const [checkingAccessibility, setCheckingAccessibility] = useState(Platform.OS === "android");
-  const [isLockEnabled, setIsLockEnabled] = useState(false);
-  const [lockPin, setLockPin] = useState("");
-  const [lockPinDraft, setLockPinDraft] = useState("");
-  const [lockPinConfirm, setLockPinConfirm] = useState("");
-  const [unlockPin, setUnlockPin] = useState("");
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [lockHint, setLockHint] = useState("");
-  const [isLocked, setIsLocked] = useState(false);
 
   const syncing = useRef(false);
   const toastTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const mainScrollRef = useRef<ScrollView>(null);
-  const logoutRef = useRef<() => void>(() => {});
   const firstName = useMemo(() => user?.fullName?.split(" ")[0] || "Demo", [user?.fullName]);
-  const unreadCount = useMemo(() => notifications.filter((n) => !n.isRead).length, [notifications]);
 
   const dismissToast = (id: number) => {
     const timer = toastTimers.current[id];
@@ -708,6 +883,7 @@ export default function App() {
       setCheckingAccessibility(false);
     }
   };
+  const getActiveSummaries = () => mergeSummaryDraft(summaries, summary);
   const refreshSosSetupStatus = async () => {
     if (Platform.OS !== "android") {
       setSosSetupStatus({
@@ -749,33 +925,23 @@ export default function App() {
     }
     return false;
   };
-  const openNotificationSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      await notifee.openNotificationSettings(SOS_CHANNEL_ID);
-    });
-  const openAccessibilitySettingsScreen = () => {
-    accessibilityModule?.openAccessibilitySettings?.();
+  const clearSummaryDraft = () => {
+    setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+    setSmDraft("");
   };
-  const openBatteryOptimizationSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      await notifee.openBatteryOptimizationSettings();
-    });
-  const openPowerManagerSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      if (!sosSetupStatus.powerManagerSupported) {
-        throw new Error("No vendor-specific power-manager settings shortcut is available on this device.");
-      }
-      await notifee.openPowerManagerSettings();
-    });
   const resetRegisterForm = () => {
     setRegister({ ...EMPTY_REGISTER });
     setRegisterErrors({});
     setShowRegPassword(false);
     setShowRegConfirm(false);
     setShowRegisterDobPicker(false);
+  };
+  const resetResetPasswordForm = () => {
+    setResetCodeInput("");
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setShowResetPassword(false);
+    setShowResetConfirmPassword(false);
   };
   const onRegisterDobChange = (_: DateTimePickerEvent, selected?: Date) => {
     setShowRegisterDobPicker(false);
@@ -812,34 +978,47 @@ export default function App() {
     await updateQCount();
   };
 
-  const toPublic = (snap: Snapshot): PublicData => ({
-    user: { fullName: snap.user.fullName },
-    medicalProfile: {
-      bloodGroup: snap.profile.bloodGroup || null,
-      cnic: snap.profile.cnic || null,
-      age: snap.profile.age ? Number(snap.profile.age) : null,
-      address: snap.profile.address || null,
-      allergies: snap.profile.allergies,
-      chronicConditions: snap.profile.chronicConditions,
-      medications: snap.profile.medications,
-      emergencyNotes: snap.profile.emergencyNotes || null,
-    },
-    medicalSummary: {
-      hospitalName: snap.summary.hospitalName || null,
-      doctorName: snap.summary.doctorName || null,
-      diseaseStartingYear: snap.summary.diseaseStartingYear ? Number(snap.summary.diseaseStartingYear) : null,
-      treatmentStatus: snap.summary.treatmentStatus || null,
-      checkupFiles: snap.summary.checkupFiles || [],
-      currentMedications: snap.summary.currentMedications,
-    },
-    emergencyContacts: snap.contacts.map((c) => ({
-      name: c.name,
-      phoneNumber: c.phoneNumber,
-      email: c.email || null,
-      relationship: c.relationship || null,
-      isPrimary: !!c.isPrimary,
-    })),
-  });
+  const toPublic = (snap: Snapshot): PublicData => {
+    const visibleSummaries = snap.summaries?.length ? snap.summaries : hasSummaryContent(snap.summary) ? [snap.summary] : [];
+    const primarySummary = visibleSummaries[0] || snap.summary;
+    const identityDetails = buildIdentityDetails(snap.user, snap.profile);
+    const profileHighlights = buildProfileHighlights(snap.profile, primarySummary, snap.contacts);
+    return {
+      user: { fullName: snap.user.fullName },
+      identityDetails,
+      medicalProfile: {
+        bloodGroup: snap.profile.bloodGroup || null,
+        cnic: snap.profile.cnic || null,
+        age: snap.profile.age ? Number(snap.profile.age) : null,
+        address: snap.profile.address || null,
+        allergies: snap.profile.allergies,
+        chronicConditions: snap.profile.chronicConditions,
+        medications: snap.profile.medications,
+        emergencyNotes: snap.profile.emergencyNotes || null,
+        dateOfBirth: snap.profile.dateOfBirth || null,
+        gender: snap.profile.gender || null,
+      },
+      medicalSummary: {
+        hospitalName: primarySummary?.hospitalName || null,
+        doctorName: primarySummary?.doctorName || null,
+        diseaseStartingYear: primarySummary?.diseaseStartingYear ? Number(primarySummary.diseaseStartingYear) : null,
+        treatmentStatus: primarySummary?.treatmentStatus || null,
+        checkupFiles: primarySummary?.checkupFiles || [],
+        currentMedications: primarySummary?.currentMedications || [],
+        entries: visibleSummaries,
+      },
+      emergencyContacts: snap.contacts.map((c) => ({
+        name: c.name,
+        phoneNumber: c.phoneNumber,
+        email: c.email || null,
+        relationship: c.relationship || null,
+        isPrimary: !!c.isPrimary,
+      })),
+      profileHighlights,
+      qrProfile: buildQrProfile(identityDetails, snap.profile, profileHighlights),
+      generatedAt: snap.savedAt,
+    };
+  };
 
   const hydrate = async (t: string, currentUser?: User, silent = false) => {
     const [profileRes, summaryRes, contactsRes] = await Promise.all([
@@ -849,46 +1028,39 @@ export default function App() {
     ]);
 
     const activeUser = currentUser || user;
-    setProfile(
-      profileRes
-        ? {
-            bloodGroup: profileRes.bloodGroup || "",
-            cnic: profileRes.cnic || activeUser?.cnic || "",
-            age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
-            address: profileRes.address || activeUser?.address || "",
-            allergies: arr(profileRes.allergies),
-            chronicConditions: arr(profileRes.chronicConditions),
-            medications: arr(profileRes.medications),
-            emergencyNotes: profileRes.emergencyNotes || "",
-            dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
-            gender: profileRes.gender || activeUser?.gender || "",
-          }
-        : {
-            ...EMPTY_PROFILE,
-            cnic: activeUser?.cnic || "",
-            address: activeUser?.address || "",
-            dateOfBirth: asDate(activeUser?.dateOfBirth),
-            gender: activeUser?.gender || "",
-          },
-    );
+    const nextProfile: Profile = profileRes
+      ? {
+          bloodGroup: profileRes.bloodGroup || "",
+          cnic: profileRes.cnic || activeUser?.cnic || "",
+          age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
+          address: profileRes.address || activeUser?.address || "",
+          allergies: arr(profileRes.allergies),
+          chronicConditions: arr(profileRes.chronicConditions),
+          medications: arr(profileRes.medications),
+          emergencyNotes: profileRes.emergencyNotes || "",
+          dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
+          gender: profileRes.gender || activeUser?.gender || "",
+        }
+      : {
+          ...EMPTY_PROFILE,
+          cnic: activeUser?.cnic || "",
+          address: activeUser?.address || "",
+          dateOfBirth: asDate(activeUser?.dateOfBirth),
+          gender: activeUser?.gender || "",
+        };
+    setProfile(nextProfile);
 
-    setSummary(
-      summaryRes
-        ? {
-            hospitalName: summaryRes.hospitalName || "",
-            doctorName: summaryRes.doctorName || "",
-            diseaseStartingYear:
-              summaryRes.diseaseStartingYear !== undefined && summaryRes.diseaseStartingYear !== null
-                ? String(summaryRes.diseaseStartingYear)
-                : "",
-            treatmentDuration: summaryRes.treatmentDuration || "",
-            treatmentStatus: summaryRes.treatmentStatus || "",
-            checkupFiles: arr(summaryRes.checkupFiles),
-            currentMedications: arr(summaryRes.currentMedications),
-            notes: summaryRes.notes || "",
-          }
-        : EMPTY_SUMMARY,
-    );
+    const nextSummaries = summaryRes?.entries?.length
+      ? sortSummaryEntries(
+          summaryRes.entries.map((entry: any, index: number) =>
+            normalizeSummaryEntry(entry, entry?.id || `summary-${index + 1}`),
+          ),
+        )
+      : summaryRes
+        ? [normalizeSummaryEntry(summaryRes, "summary-1")]
+        : [];
+    setSummaries(nextSummaries);
+    setSummary(nextSummaries[0] || { ...EMPTY_SUMMARY, id: safeId() });
 
     setContacts(contactsRes || []);
 
@@ -905,20 +1077,8 @@ export default function App() {
     }
 
     if (!silent) setOk("Cloud data loaded.");
-    void refreshSosSetupStatus();
-    if (activeUser && profileRes) {
-      void startSosNotification(buildLockScreenPreview(activeUser, {
-        bloodGroup: profileRes.bloodGroup || "",
-        cnic: profileRes.cnic || activeUser?.cnic || "",
-        age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
-        address: profileRes.address || activeUser?.address || "",
-        allergies: arr(profileRes.allergies),
-        chronicConditions: arr(profileRes.chronicConditions),
-        medications: arr(profileRes.medications),
-        emergencyNotes: profileRes.emergencyNotes || "",
-        dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
-        gender: profileRes.gender || activeUser?.gender || "",
-      }));
+    if (activeUser) {
+      void startSosNotification(buildLockScreenPreview(activeUser, nextProfile));
     }
   };
 
@@ -955,10 +1115,7 @@ export default function App() {
           if (row.kind === "contact_delete" && payload.id && !String(payload.id).startsWith("local-")) {
             await api(`/me/emergency-contacts/${payload.id}`, "DELETE", token);
           }
-          if (row.kind === "panic_alert") {
-            await api("/me/panic-alerts", "POST", token, payload);
-            await scheduleAlertNotification("ResQID alert synced", "Your offline SOS alert has been sent.");
-          }
+          if (row.kind === "panic_alert") await api("/me/panic-alerts", "POST", token, payload);
           await delQ(db, row.id);
         } catch (e) {
           if (netErr(e)) break;
@@ -967,7 +1124,6 @@ export default function App() {
       }
 
       await updateQCount();
-      void accessibilityModule?.flushPendingSosQueue?.();
       await hydrate(token, user || undefined, true);
       setOk("Offline changes synced.");
     } finally {
@@ -992,16 +1148,10 @@ export default function App() {
       const cachedSnapshot = await getKV<Snapshot>(localDb, "snapshot");
       const cachedToken = await getKV<string>(localDb, "auth_token");
       const cachedUser = await getKV<User>(localDb, "auth_user");
-      const cachedLockSettings = await getKV<{ isLockEnabled: boolean; lockPin: string }>(localDb, "lock_settings");
-      const cachedNotifications = await getKV<NotificationItem[]>(localDb, "notifications");
       if (!active) return;
 
       setSnapshot(cachedSnapshot);
-      if (cachedNotifications) setNotifications(cachedNotifications);
-      if (cachedLockSettings) {
-        setIsLockEnabled(Boolean(cachedLockSettings.isLockEnabled));
-        setLockPin(String(cachedLockSettings.lockPin || ""));
-      }
+      void delKV(localDb, "lock_settings");
       if (cachedToken && cachedUser) {
         setToken(cachedToken);
         setUser(cachedUser);
@@ -1016,15 +1166,60 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  }, []);
+
+  useEffect(() => {
     if (!ready || !token || !user) return;
     void hydrate(token, user, true);
+    void refreshSosSetupStatus();
   }, [ready, token, user?.id]);
 
   useEffect(() => {
-    if (ready && token && user && isLockEnabled && lockPin) {
-      setIsLocked(true);
-    }
-  }, [ready, token, user, isLockEnabled, lockPin]);
+    void refreshAccessibilityStatus();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void notifee.getInitialNotification().then((initial) => {
+      if (!active) return;
+      const pressId =
+        initial?.pressAction?.id ||
+        initial?.notification?.android?.pressAction?.id ||
+        "";
+      activateEmergencyLaunch(pressId);
+    });
+
+    const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
+      const pressId =
+        detail.pressAction?.id ||
+        detail.notification?.android?.pressAction?.id ||
+        "";
+      activateEmergencyLaunch(pressId);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingEmergencyLaunch || !ready || !token || !user) return;
+    setTab("home");
+    setShowSos(true);
+    setPendingEmergencyLaunch(false);
+  }, [pendingEmergencyLaunch, ready, token, user]);
 
   useEffect(
     () => () => {
@@ -1033,26 +1228,6 @@ export default function App() {
     },
     [],
   );
-
-  // Wire up auth-expired callback so api() can trigger logout on 401/403
-  useEffect(() => {
-    logoutRef.current = () => {
-      if (db) delKV(db, "expo_push_token").catch(() => {});
-      setToken("");
-      setUser(null);
-      setContacts([]);
-      setQr(null);
-      setProfile(EMPTY_PROFILE);
-      setSummary(EMPTY_SUMMARY);
-      setAuthScreen("login");
-      setTab("home");
-      setIsLocked(false);
-      setUnlockPin("");
-    };
-    onAuthExpired = () => logoutRef.current();
-    console.log("logging out.");
-    return () => { onAuthExpired = null; };
-  }, [db]);
 
   useEffect(() => {
     void syncQ();
@@ -1063,7 +1238,6 @@ export default function App() {
     if (!token || !user) {
       void delKV(db, "auth_token");
       void delKV(db, "auth_user");
-      accessibilityModule?.clearSosConfig?.();
       return;
     }
     void setKV(db, "auth_token", token);
@@ -1076,6 +1250,7 @@ export default function App() {
       user,
       profile,
       summary,
+      summaries,
       contacts,
       qr,
       savedAt: new Date().toISOString(),
@@ -1083,175 +1258,37 @@ export default function App() {
     void setKV(db, "snapshot", snap);
     void setKV(db, "qr_data", qr);
     setSnapshot(snap);
-  }, [db, user, profile, summary, contacts, qr]);
-
-  useEffect(() => {
-    if (!db) return;
-    void setKV(db, "lock_settings", { isLockEnabled, lockPin });
-  }, [db, isLockEnabled, lockPin]);
-
-  useEffect(() => {
-    if (!db) return;
-    void setKV(db, "notifications", notifications);
-  }, [db, notifications]);
+  }, [db, user, profile, summary, summaries, contacts, qr]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active" && isLockEnabled && Boolean(token) && Boolean(user) && lockPin) {
-        setIsLocked(true);
-      }
-    });
-    return () => {
-      subscription.remove();
-    };
-  }, [isLockEnabled, token, user, lockPin]);
-
-  // to token to backend
-
-useEffect(() => {
-  if (!token || !db) return;
-  console.log("Registering for push notifications...");
-
-  LogBox.ignoreAllLogs();
-
-  registerForPushNotificationsAsync()
-    .then(async (expoPushToken) => {
-      if (!expoPushToken) return;
-
-      // Skip if the same token was already registered
-      const cachedPushToken = await getKV<string>(db, "expo_push_token");
-      if (cachedPushToken === expoPushToken) {
-        console.log("Push token unchanged, skipping registration.");
+      if (state !== "active") {
+        setPendingEmergencyLaunch(false);
         return;
       }
-
-      await api("/auth/register-push-token", "POST", token, {
-        expoPushToken,
-      });
-
-      // Store locally so we don't re-register the same token
-      await setKV(db, "expo_push_token", expoPushToken);
-      console.log("Expo push token registered:", expoPushToken);
-    })
-    .catch(console.log);
-
-}, [token, db]); 
-
-useEffect(() => {
-  const parseNotification = (identifier: string, data: any, body?: string | null): NotificationItem | null => {
-    if (data?.latitude === undefined || data?.longitude === undefined) return null;
-    return {
-      id: identifier || `notif-${Date.now()}-${Math.random()}`,
-      senderName: String(data?.senderName || "Unknown"),
-      message: String(data?.message || body || ""),
-      latitude: Number(data.latitude),
-      longitude: Number(data.longitude),
-      createdAt: new Date().toISOString(),
-      isRead: false,
-    };
-  };
-
-  const addIfNew = (item: NotificationItem) => {
-    setNotifications((prev) => {
-      if (prev.some((n) => n.id === item.id)) return prev;
-      return [item, ...prev];
+      void refreshAccessibilityStatus();
     });
-  };
-
-  const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
-    console.log("🔔 Notification received:", JSON.stringify(notification, null, 2));
-    const item = parseNotification(
-      notification.request.identifier,
-      notification.request.content.data,
-      notification.request.content.body,
-    );
-    if (item) addIfNew(item);
-  });
-
-  const responseSub = Notifications.addNotificationResponseReceivedListener(async (response) => {
-    console.log("👉 Notification response:", JSON.stringify(response, null, 2));
-
-    const action = response.actionIdentifier;
-    const data = response.notification.request.content.data;
-
-    const latitude = Number(data?.latitude);
-    const longitude = Number(data?.longitude);
-
-    // Always store the notification regardless of action
-    const item = parseNotification(
-      response.notification.request.identifier,
-      data,
-      response.notification.request.content.body,
-    );
-    if (item) addIfNew(item);
-
-    if (action === "OPEN_MAP") {
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
-      await Linking.openURL(mapsUrl);
-      return;
-    }
-
-    if (action === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-      setTab("notifications");
-      return;
-    }
-  });
-
-  return () => {
-    receivedSub.remove();
-    responseSub.remove();
-  };
-}, []);
-
-  useEffect(() => {
-    void refreshAccessibilityStatus();
-
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void refreshAccessibilityStatus();
-      }
-    });
-
     return () => {
       subscription.remove();
     };
   }, []);
 
   useEffect(() => {
+    if (Platform.OS !== "android") return;
+
     if (!token || !user) {
       accessibilityModule?.clearSosConfig?.();
       return;
     }
+
     accessibilityModule?.syncSosConfig?.(ACTIVE_API, token);
-  }, [token, user]);
-
-  useEffect(() => {
-    const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
-      if (type === EventType.PRESS && detail.pressAction?.id) {
-        activateEmergencyLaunch(detail.pressAction.id);
+    if (isOnline) {
+      const flushPromise = accessibilityModule?.flushPendingSosQueue?.();
+      if (flushPromise) {
+        void flushPromise.catch(() => undefined);
       }
-    });
-
-    void notifee.getInitialNotification().then((notification) => {
-      if (notification?.notification.android?.pressAction?.id) {
-        activateEmergencyLaunch(notification.notification.android.pressAction.id);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pendingEmergencyLaunch || !ready || !token || !user) return;
-    setTab("home");
-    setShowSos(true);
-    setPendingEmergencyLaunch(false);
-  }, [pendingEmergencyLaunch, ready, token, user]);
-
+    }
+  }, [token, user?.id, isOnline]);
 
   const loginUser = () =>
     run(async () => {
@@ -1272,9 +1309,6 @@ useEffect(() => {
       setUser(response.user);
       setLoginErrors({});
       setTab("home");
-      if (isLockEnabled && lockPin) {
-        setIsLocked(true);
-      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Signed in.");
     });
@@ -1294,7 +1328,7 @@ useEffect(() => {
       if (!register.dateOfBirth.trim()) nextErrors.dateOfBirth = "Date of birth is required.";
       if (!register.gender.trim()) nextErrors.gender = "Gender is required.";
       if (!register.password) nextErrors.password = "Password is required.";
-      else if (register.password.length < 6) nextErrors.password = "Password must be at least 6 characters.";
+      else if (register.password.length < 8) nextErrors.password = "Password must be at least 8 characters.";
       if (!register.confirmPassword) nextErrors.confirmPassword = "Confirm password is required.";
       else if (register.password !== register.confirmPassword) nextErrors.confirmPassword = "Passwords do not match.";
       setRegisterErrors(nextErrors);
@@ -1322,9 +1356,6 @@ useEffect(() => {
       setLogin({ email: payload.email, password: payload.password });
       setTab("home");
       resetRegisterForm();
-      if (isLockEnabled && lockPin) {
-        setIsLocked(true);
-      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Account created.");
     });
@@ -1342,11 +1373,64 @@ useEffect(() => {
         throw new Error("Please enter a valid email.");
       }
 
-      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, { email });
+      const response = await api<{ message: string; resetCode?: string; usedFallback?: boolean }>(
+        "/auth/forgot-password",
+        "POST",
+        undefined,
+        { email },
+      );
       setForgotEmailError("");
       setLogin((prev) => ({ ...prev, email }));
+      if (response.resetCode) {
+        await Clipboard.setStringAsync(response.resetCode);
+        setResetCodeInput(response.resetCode);
+        setInfo("Reset code copied because email delivery is not configured on this server.");
+      }
+      setOk(response.message || "Password reset code sent.");
+      setAuthScreen("verifyReset");
+    });
+
+  const verifyResetCodeInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to verify reset code.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
+      if (!/^\d{6}$/.test(code)) throw new Error("Reset code must be 6 digits.");
+
+      const response = await api<{ message: string }>(
+        "/auth/verify-reset-code",
+        "POST",
+        undefined,
+        { email, code },
+      );
+      setOk(response.message || "Reset code verified.");
+      setAuthScreen("reset");
+    });
+
+  const resetPasswordInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to reset password.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
+      if (!resetPassword) throw new Error("New password is required.");
+      if (resetPassword.length < 8) throw new Error("Password must be at least 8 characters.");
+      if (!resetConfirmPassword) throw new Error("Confirm password is required.");
+      if (resetPassword !== resetConfirmPassword) throw new Error("Passwords do not match.");
+
+      const response = await api<{ message: string }>(
+        "/auth/reset-password",
+        "POST",
+        undefined,
+        { email, code, newPassword: resetPassword },
+      );
+      setLogin((prev) => ({ ...prev, email: forgotEmail.trim().toLowerCase(), password: "" }));
+      resetResetPasswordForm();
       setAuthScreen("login");
-      setOk(response.message || "Password reset instructions sent.");
+      setOk(response.message || "Password has been reset.");
     });
 
   const saveProfileCore = async () => {
@@ -1381,25 +1465,44 @@ useEffect(() => {
   };
 
   const saveSummaryCore = async () => {
-    const parsedYear = summary.diseaseStartingYear.trim()
-      ? toNumericYear(summary.diseaseStartingYear.trim())
-      : null;
-    if (summary.diseaseStartingYear.trim() && parsedYear === null) {
-      throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+    const entries = getActiveSummaries();
+    for (const item of entries) {
+      const parsedYear = item.diseaseStartingYear.trim() ? toNumericYear(item.diseaseStartingYear.trim()) : null;
+      if (item.diseaseStartingYear.trim() && parsedYear === null) {
+        throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+      }
+      if (item.checkupFiles.some((file) => !isPdfReference(file))) {
+        throw new Error("Checkup files must be PDF files (ending with .pdf).");
+      }
     }
-    if (summary.checkupFiles.some((item) => !isPdfReference(item))) {
-      throw new Error("Checkup files must be PDF files (ending with .pdf).");
-    }
+    const primary = entries[0];
     const payload = {
-      hospitalName: summary.hospitalName || undefined,
-      doctorName: summary.doctorName || undefined,
-      diseaseStartingYear: parsedYear ?? undefined,
-      treatmentDuration: summary.treatmentDuration || undefined,
-      treatmentStatus: summary.treatmentStatus || undefined,
-      checkupFiles: summary.checkupFiles,
-      currentMedications: summary.currentMedications,
-      notes: summary.notes || undefined,
+      hospitalName: primary?.hospitalName || undefined,
+      doctorName: primary?.doctorName || undefined,
+      diseaseStartingYear: primary?.diseaseStartingYear.trim()
+        ? toNumericYear(primary.diseaseStartingYear.trim()) ?? undefined
+        : undefined,
+      treatmentDuration: primary?.treatmentDuration || undefined,
+      treatmentStatus: primary?.treatmentStatus || undefined,
+      checkupFiles: primary?.checkupFiles || [],
+      currentMedications: primary?.currentMedications || [],
+      notes: primary?.notes || undefined,
+      entries: entries.map((item) => ({
+        id: item.id,
+        hospitalName: item.hospitalName || undefined,
+        doctorName: item.doctorName || undefined,
+        diseaseStartingYear: item.diseaseStartingYear.trim()
+          ? toNumericYear(item.diseaseStartingYear.trim()) ?? undefined
+          : undefined,
+        treatmentDuration: item.treatmentDuration || undefined,
+        treatmentStatus: item.treatmentStatus || undefined,
+        checkupFiles: item.checkupFiles,
+        currentMedications: item.currentMedications,
+        notes: item.notes || undefined,
+      })),
     };
+    setSummaries(entries);
+    clearSummaryDraft();
     if (isOnline) {
       try {
         await api("/me/medical-summary", "PUT", token, payload);
@@ -1438,15 +1541,6 @@ useEffect(() => {
       }
       if (!contactForm.id && contacts.length >= 5) {
         throw new Error("You can add up to 5 emergency contacts.");
-      }
-
-      // Enforce unique contact email
-      const normalizedEmail = contactForm.email.trim().toLowerCase();
-      const duplicate = contacts.find(
-        (c) => c.email?.toLowerCase() === normalizedEmail && c.id !== contactForm.id,
-      );
-      if (duplicate) {
-        throw new Error(`Email "${normalizedEmail}" is already used by contact "${duplicate.name}".`);
       }
 
       const payload = {
@@ -1527,47 +1621,47 @@ useEffect(() => {
     }
   };
 
+  const sendSosCore = async (closeSheet = true) => {
+    const loc = await getLocation();
+    setLastLoc(loc);
+
+    const payload = {
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      message: panicMsg.trim() || undefined,
+    };
+    if (isOnline) {
+      try {
+        const response = await api<{ warning?: string }>("/me/panic-alerts", "POST", token, payload);
+        if (closeSheet) setShowSos(false);
+        setPanicMsg("");
+        await scheduleAlertNotification(
+          "ResQID emergency alert",
+          response?.warning || "Your emergency alert was processed.",
+        );
+        void startSosNotification();
+        setOk(response?.warning || "Emergency alert sent.");
+        return;
+      } catch (e) {
+        if (!netErr(e)) throw e;
+      }
+    }
+
+    await queue("panic_alert", payload);
+    if (closeSheet) setShowSos(false);
+    setPanicMsg("");
+    await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
+    if (user) {
+      void startSosNotification(buildLockScreenPreview(user, profile));
+    } else {
+      void startSosNotification();
+    }
+    setInfo("SOS queued offline and will sync automatically.");
+  };
+
   const sendSos = () =>
     run(async () => {
-      const loc = await getLocation();
-      setLastLoc(loc);
-
-      const payload = {
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        message: panicMsg.trim() || "I'm in emergency!!",
-      };
-      if (isOnline) {
-        try {
-          const response = await api<{ warning?: string }>("/me/panic-alerts", "POST", token, payload);
-          setShowSos(false);
-          setPanicMsg("");
-          await scheduleAlertNotification(
-            "ResQID emergency alert",
-            response?.warning || "Your emergency alert was processed.",
-          );
-          if (user) {
-            void startSosNotification(buildLockScreenPreview(user, profile));
-          } else {
-            void startSosNotification();
-          }
-          setOk(response?.warning || "Emergency alert sent.");
-          return;
-        } catch (e) {
-          if (!netErr(e)) throw e;
-        }
-      }
-
-      await queue("panic_alert", payload);
-      setShowSos(false);
-      setPanicMsg("");
-      await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
-      if (user) {
-        void startSosNotification(buildLockScreenPreview(user, profile));
-      } else {
-        void startSosNotification();
-      }
-      setInfo("SOS queued offline and will sync automatically.");
+      await sendSosCore(true);
     });
 
   const regenQr = () =>
@@ -1583,6 +1677,27 @@ useEffect(() => {
       await Clipboard.setStringAsync(emergencyUrl);
       setOk("Emergency URL copied.");
     });
+  const openNotificationSettingsScreen = () =>
+    run(async () => {
+      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
+      await notifee.openNotificationSettings(SOS_CHANNEL_ID);
+    });
+  const openAccessibilitySettingsScreen = () => {
+    accessibilityModule?.openAccessibilitySettings?.();
+  };
+  const openBatteryOptimizationSettingsScreen = () =>
+    run(async () => {
+      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
+      await notifee.openBatteryOptimizationSettings();
+    });
+  const openPowerManagerSettingsScreen = () =>
+    run(async () => {
+      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
+      if (!sosSetupStatus.powerManagerSupported) {
+        throw new Error("No vendor-specific power-manager settings shortcut is available on this device.");
+      }
+      await notifee.openPowerManagerSettings();
+    });
   const openEmergencyUrl = () =>
     run(async () => {
       const emergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
@@ -1597,7 +1712,6 @@ useEffect(() => {
       const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
       if (!permission.granted) throw new Error("Camera permission is required.");
       setScannerLocked(false);
-      setShowPublicProfileModal(false);
       setShowScanner(true);
     });
 
@@ -1606,12 +1720,15 @@ useEffect(() => {
     if (!emergencyToken) throw new Error("Provide a valid token or URL.");
 
     if (isOnline) {
-      setPublicData(await api<PublicData>(`/emergency-access/${emergencyToken}`));
+      const data = await api<PublicData>(`/emergency-access/${emergencyToken}/data`);
+      setPublicData(data);
+      setShowPublicProfileModal(true);
       return;
     }
 
     if (snapshot?.qr?.emergencyUrl && tokenFrom(snapshot.qr.emergencyUrl) === emergencyToken) {
       setPublicData(toPublic(snapshot));
+      setShowPublicProfileModal(true);
       return;
     }
 
@@ -1625,11 +1742,45 @@ useEffect(() => {
     const scanned = tokenFrom(result.data || "");
     setPublicInput(scanned);
     void run(async () => {
-      await resolvePublic(scanned);
-      setShowPublicProfileModal(true);
-      setOk("QR scanned successfully.");
+      try {
+        await resolvePublic(scanned);
+        setOk("QR scanned successfully.");
+      } finally {
+        setScannerLocked(false);
+      }
     });
   };
+
+  useEffect(() => {
+    const openEmergencyLink = async (rawUrl?: string | null) => {
+      const incoming = String(rawUrl || "").trim();
+      const emergencyToken = tokenFrom(incoming);
+      if (!incoming || !emergencyToken || emergencyToken === incoming) {
+        return;
+      }
+
+      setAuthScreen("public");
+      setPublicInput(emergencyToken);
+      try {
+        await resolvePublic(emergencyToken);
+        setOk("Emergency profile opened.");
+      } catch (error) {
+        pushToast(errMsg(error), "error");
+      }
+    };
+
+    void Linking.getInitialURL().then((url) => {
+      void openEmergencyLink(url);
+    });
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void openEmergencyLink(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isOnline, snapshot]);
 
   const addProfileItem = (key: "allergies" | "chronicConditions" | "medications", raw: string, clear: () => void) => {
     const value = raw.trim();
@@ -1662,18 +1813,89 @@ useEffect(() => {
     }));
   };
 
-  const addCheckupFile = () => {
-    const value = checkupFileDraft.trim();
-    if (!value) return;
-    if (!isPdfReference(value)) {
-      pushToast("Only PDF files are allowed for checkup uploads.", "error");
+  const uploadCheckupFile = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to upload a PDF.");
+      let pickerModule: any = null;
+      try {
+        pickerModule = require("expo-document-picker");
+      } catch {
+        throw new Error("PDF picker is not installed in this local app build yet.");
+      }
+      const picked = await pickerModule.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (picked.canceled || !picked.assets?.length) return;
+      const file = picked.assets[0];
+      if (!isPdfReference(file.name || file.uri || "")) {
+        throw new Error("Only PDF files are allowed.");
+      }
+
+      const form = new FormData();
+      form.append("file", {
+        uri: file.uri,
+        name: file.name || `checkup-${Date.now()}.pdf`,
+        type: "application/pdf",
+      } as any);
+
+      const res = await fetch(`${ACTIVE_API}/me/medical-summary/checkup-files`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Unable to upload checkup PDF.");
+      }
+
+      setSummary((prev) => ({
+        ...prev,
+        checkupFiles: [...prev.checkupFiles, String(data?.path || data?.url || "").trim()].filter(Boolean),
+      }));
+      setOk("Checkup PDF uploaded.");
+    });
+
+  const downloadCheckupFile = (value: string) =>
+    run(async () => {
+      const url = resolveCheckupDownloadUrl(value) || resolveAssetUrl(value);
+      if (!url) throw new Error("No PDF URL available.");
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error("Cannot open this PDF on this device.");
+      await Linking.openURL(url);
+    });
+
+  const saveSummaryDraft = () => {
+    const nextDraft = { ...summary, id: summary.id || safeId() };
+    if (!hasSummaryContent(nextDraft)) {
+      pushToast("Add summary details before saving an entry.", "error");
       return;
     }
-    setSummary((prev) => ({
-      ...prev,
-      checkupFiles: [...prev.checkupFiles, value],
-    }));
-    setCheckupFileDraft("");
+    const editingExisting = summaries.some((item) => item.id === nextDraft.id);
+    const nextEntries = mergeSummaryDraft(summaries, nextDraft);
+    setSummaries(nextEntries);
+    clearSummaryDraft();
+    setOk(editingExisting ? "Summary entry updated." : "Summary entry added.");
+  };
+
+  const editSummaryEntry = (entry: Summary) => {
+    setSummary(entry);
+    setSmDraft("");
+    setTab("profile");
+    requestAnimationFrame(() => {
+      mainScrollRef.current?.scrollTo({ y: 900, animated: true });
+    });
+  };
+
+  const deleteSummaryEntry = (id: string) => {
+    setSummaries((prev) => prev.filter((item) => item.id !== id));
+    if (summary.id === id) {
+      clearSummaryDraft();
+    }
+    setInfo("Summary entry removed.");
   };
 
   const removeCheckupFile = (value: string) => {
@@ -1681,51 +1903,6 @@ useEffect(() => {
       ...prev,
       checkupFiles: prev.checkupFiles.filter((item) => item !== value),
     }));
-  };
-
-  const enableLock = () => {
-    const pin = lockPinDraft.trim();
-    const confirm = lockPinConfirm.trim();
-    if (!/^\d{4}$/.test(pin)) {
-      setLockHint("PIN must be exactly 4 digits.");
-      return;
-    }
-    if (pin !== confirm) {
-      setLockHint("PIN and confirmation do not match.");
-      return;
-    }
-    setLockPin(pin);
-    setIsLockEnabled(true);
-    setLockPinDraft("");
-    setLockPinConfirm("");
-    setUnlockPin("");
-    setLockHint("2-step lock enabled.");
-    setOk("2-step lock enabled.");
-  };
-
-  const disableLock = () => {
-    setIsLockEnabled(false);
-    setLockPin("");
-    setLockPinDraft("");
-    setLockPinConfirm("");
-    setUnlockPin("");
-    setIsLocked(false);
-    setLockHint("2-step lock disabled.");
-    setInfo("2-step lock disabled.");
-  };
-
-  const unlockApp = () => {
-    if (!isLockEnabled) {
-      setIsLocked(false);
-      return;
-    }
-    if (unlockPin.trim() !== lockPin) {
-      setLockHint("Incorrect PIN. Please try again.");
-      return;
-    }
-    setUnlockPin("");
-    setIsLocked(false);
-    setLockHint("");
   };
 
   const openContactEditor = (contact?: Contact) => {
@@ -1747,46 +1924,99 @@ useEffect(() => {
     });
   };
 
-  const removePushToken = async () => {
-    if (!db) return;
-    try {
-      const storedPushToken = await getKV<string>(db, "expo_push_token");
-      if (storedPushToken && token) {
-        await api("/auth/remove-push-token", "POST", token, {
-          expoPushToken: storedPushToken,
-        }).catch(() => {});
-      }
-      await delKV(db, "expo_push_token");
-    } catch {
-      // Best-effort cleanup
-    }
-  };
-
-  const logout = async () => {
-    console.log("Logging out...");
-    await removePushToken();
+  const logout = () => {
+    void notifee.stopForegroundService();
     void notifee.cancelNotification(SOS_GUARD_NOTIFICATION_ID).catch(() => undefined);
-    accessibilityModule?.clearSosConfig?.();
     setToken("");
     setUser(null);
     setContacts([]);
     setQr(null);
     setShowScanner(false);
-    setShowPublicProfileModal(false);
     setPublicData(null);
+    setShowPublicProfileModal(false);
     setPublicInput("");
     setProfile(EMPTY_PROFILE);
-    setSummary(EMPTY_SUMMARY);
+    setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+    setSummaries([]);
     setAuthScreen("login");
     setTab("home");
     setPendingEmergencyLaunch(false);
     setShowSos(false);
-    setIsLocked(false);
-    setUnlockPin("");
     setInfo("Logged out.");
   };
 
   const visibleEmergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
+  const isEditingSummaryEntry = summaries.some((item) => item.id === summary.id);
+  const publicProfileTitle = publicData?.qrProfile?.modalTitle || `${toTextValue(publicData?.user?.fullName, "User")} Emergency Profile`;
+  const publicProfileSubtitle =
+    publicData?.qrProfile?.modalSubtitle ||
+    "Identity details, emergency profile, and profile highlights for emergency responders.";
+  const publicProfileSections = publicData
+    ? publicData.qrProfile?.sections?.length
+      ? publicData.qrProfile.sections
+      : buildFallbackPublicSections(publicData)
+    : [];
+  const publicContacts = Array.isArray(publicData?.emergencyContacts) ? publicData.emergencyContacts : [];
+  const renderPublicProfileModal = () => {
+    if (!publicData) return null;
+
+    return (
+      <Modal
+        visible={showPublicProfileModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPublicProfileModal(false)}
+      >
+        <View style={s.publicModalOverlay}>
+          <View style={s.publicModalCard}>
+            <View style={s.publicModalTop}>
+              <View style={s.publicModalBadge}>
+                <Text style={s.publicModalBadgeText}>Emergency QR Profile</Text>
+              </View>
+              <Pressable style={s.publicModalClose} onPress={() => setShowPublicProfileModal(false)}>
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={s.publicModalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={s.publicModalTitle}>{publicProfileTitle}</Text>
+              <Text style={s.publicModalSubtitle}>{publicProfileSubtitle}</Text>
+
+              {publicProfileSections.map((section) => (
+                <View key={section.key} style={s.publicModalSection}>
+                  <Text style={s.publicModalSectionTitle}>{section.title}</Text>
+                  {section.items.map((item) => (
+                    <View key={`${section.key}-${item.label}`} style={s.publicModalLineRow}>
+                      <Text style={s.publicModalLineLabel}>{item.label}</Text>
+                      <Text style={s.publicModalLineValue}>{formatPublicSectionValue(item.value, item.type)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
+
+              <View style={s.publicModalSection}>
+                <Text style={s.publicModalSectionTitle}>Emergency Contacts</Text>
+                {publicContacts.length ? (
+                  publicContacts.map((contact, index) => (
+                    <View key={`${toTextValue(contact.name, "contact")}-${index}`} style={s.publicContactCard}>
+                      <Text style={s.publicContactName}>{toTextValue(contact.name, "Unknown contact")}</Text>
+                      <Text style={s.publicContactLine}>{toTextValue(contact.phoneNumber)}</Text>
+                      <Text style={s.publicContactLine}>{toTextValue(contact.relationship, "No relationship")}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={s.publicModalEmpty}>No emergency contacts available.</Text>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
 
   if (!ready) {
     return (
@@ -1803,19 +2033,30 @@ useEffect(() => {
     );
   }
 
-  if (token && user && Platform.OS === "android" && !accessibilityEnabled) {
+  if (Platform.OS === "android" && checkingAccessibility) {
     return (
-      <AccessibilityOnboarding
-        onEnabled={() => setAccessibilityEnabled(true)}
-      />
+      <SafeAreaView style={s.root}>
+        <StatusBar style="dark" />
+        <View style={s.bootWrap}>
+          <View style={s.logoSquare}>
+            <Ionicons name="shield-checkmark-outline" size={36} color="#fff" />
+          </View>
+          <Text style={s.bootTitle}>ResQID</Text>
+          <Text style={s.bootSub}>Checking SOS accessibility setup...</Text>
+        </View>
+      </SafeAreaView>
     );
+  }
+
+  if (Platform.OS === "android" && !accessibilityEnabled) {
+    return <AccessibilityOnboarding onEnabled={() => setAccessibilityEnabled(true)} />;
   }
 
   if (!token || !user) {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="dark" />
-        <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
           <View style={s.logoBlock}>
             <View style={s.logoSquare}>
@@ -1837,6 +2078,10 @@ useEffect(() => {
                   setLoginErrors((p) => ({ ...p, email: undefined }));
                 }}
                 keyboardType="email-address"
+                autoComplete="email"
+                textContentType="username"
+                importantForAutofill="yes"
+                returnKeyType="next"
               />
               {!!loginErrors.email && <Text style={s.fieldError}>{loginErrors.email}</Text>}
               <Text style={s.formLabel}>Password</Text>
@@ -1849,10 +2094,14 @@ useEffect(() => {
                   setLoginErrors((p) => ({ ...p, password: undefined }));
                 }}
                 secureTextEntry={!showLoginPassword}
+                autoComplete="password"
+                textContentType="password"
+                importantForAutofill="yes"
+                returnKeyType="done"
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
                     <Ionicons
-                      name={showLoginPassword ? "eye-off-outline" : "eye-outline"}
+                      name={showLoginPassword ? "eye-outline" : "eye-off-outline"}
                       size={22}
                       color="#6b7280"
                     />
@@ -1903,6 +2152,9 @@ useEffect(() => {
                   setRegisterErrors((p) => ({ ...p, fullName: undefined }));
                 }}
                 autoCapitalize="words"
+                autoComplete="name"
+                textContentType="name"
+                importantForAutofill="yes"
               />
               {!!registerErrors.fullName && <Text style={s.fieldError}>{registerErrors.fullName}</Text>}
               <Text style={s.formLabel}>Email</Text>
@@ -1915,6 +2167,9 @@ useEffect(() => {
                   setRegisterErrors((p) => ({ ...p, email: undefined }));
                 }}
                 keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                importantForAutofill="yes"
               />
               {!!registerErrors.email && <Text style={s.fieldError}>{registerErrors.email}</Text>}
               <Text style={s.formLabel}>Phone Number</Text>
@@ -1927,6 +2182,9 @@ useEffect(() => {
                   setRegisterErrors((p) => ({ ...p, phoneNumber: undefined }));
                 }}
                 keyboardType="phone-pad"
+                autoComplete="tel"
+                textContentType="telephoneNumber"
+                importantForAutofill="yes"
               />
               {!!registerErrors.phoneNumber && <Text style={s.fieldError}>{registerErrors.phoneNumber}</Text>}
               <Text style={s.formLabel}>CNIC</Text>
@@ -1935,7 +2193,11 @@ useEffect(() => {
                 placeholder="12345-1234567-1"
                 value={register.cnic}
                 onChangeText={(v) => {
-                  setRegister((p) => ({ ...p, cnic: v.replace(/[^0-9-]/g, "").slice(0, 15) }));
+                  const digits = v.replace(/\D/g, "").slice(0, 13);
+                  const formatted = [digits.slice(0, 5), digits.slice(5, 12), digits.slice(12, 13)]
+                    .filter(Boolean)
+                    .join("-");
+                  setRegister((p) => ({ ...p, cnic: formatted }));
                   setRegisterErrors((p) => ({ ...p, cnic: undefined }));
                 }}
                 keyboardType="number-pad"
@@ -2004,6 +2266,9 @@ useEffect(() => {
                   setRegisterErrors((p) => ({ ...p, password: undefined }));
                 }}
                 secureTextEntry={!showRegPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowRegPassword((v) => !v)}>
                     <Ionicons
@@ -2025,6 +2290,9 @@ useEffect(() => {
                   setRegisterErrors((p) => ({ ...p, confirmPassword: undefined }));
                 }}
                 secureTextEntry={!showRegConfirm}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
                     <Ionicons
@@ -2054,7 +2322,7 @@ useEffect(() => {
                 </Pressable>
                 <View>
                   <Text style={s.authTitle}>Forgot Password</Text>
-                  <Text style={s.authSub}>We will send reset instructions to your email</Text>
+                  <Text style={s.authSub}>We will send a 6-digit code to your email</Text>
                 </View>
               </View>
 
@@ -2068,10 +2336,98 @@ useEffect(() => {
                   setForgotEmailError("");
                 }}
                 keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                importantForAutofill="yes"
               />
               {!!forgotEmailError && <Text style={s.fieldError}>{forgotEmailError}</Text>}
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
-                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Link"}</Text>
+                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Code"}</Text>
+              </Pressable>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("verifyReset")}>Already have a reset code?</Text>
+            </View>
+          )}
+
+          {authScreen === "verifyReset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("forgot")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Verify Code</Text>
+                  <Text style={s.authSub}>Enter the 6-digit code sent to your email</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Reset Code</Text>
+              <Field
+                icon="key-outline"
+                placeholder="Enter 6-digit code"
+                value={resetCodeInput}
+                onChangeText={(v) => setResetCodeInput(v.replace(/\D/g, "").slice(0, 6))}
+                keyboardType="number-pad"
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={verifyResetCodeInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Checking..." : "Verify Code"}</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authScreen === "reset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("verifyReset")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>New Password</Text>
+                  <Text style={s.authSub}>Set your new password after code verification</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>New Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Enter new password"
+                value={resetPassword}
+                onChangeText={setResetPassword}
+                secureTextEntry={!showResetPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
+                right={
+                  <Pressable onPress={() => setShowResetPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Text style={s.formLabel}>Confirm Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Confirm new password"
+                value={resetConfirmPassword}
+                onChangeText={setResetConfirmPassword}
+                secureTextEntry={!showResetConfirmPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
+                right={
+                  <Pressable onPress={() => setShowResetConfirmPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={resetPasswordInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Updating..." : "Reset Password"}</Text>
               </Pressable>
             </View>
           )}
@@ -2086,7 +2442,21 @@ useEffect(() => {
               </View>
               {showScanner ? (
                 <View style={s.scannerWrap}>
-                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
+                  {cameraPermission?.granted ? (
+                    <CameraView
+                      style={s.scanner}
+                      onBarcodeScanned={scannerLocked ? undefined : onScanned}
+                      barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                    />
+                  ) : (
+                    <View style={s.scannerFallback}>
+                      <Ionicons name="camera-outline" size={28} color="#6b7280" />
+                      <Text style={s.scannerFallbackText}>Camera access is required for QR scanning.</Text>
+                      <Pressable style={s.subtleBtn} onPress={openScanner}>
+                        <Text style={s.subtleBtnText}>Grant Camera Access</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               ) : (
                 <>
@@ -2111,17 +2481,10 @@ useEffect(() => {
                     <Text style={s.subtleBtnText}>Scan QR with Camera</Text>
                   </Pressable>
                   {publicData && (
-                    <View style={s.publicCard}>
-                      <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
-                      <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
-                      <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
-                      <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
-                      <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
-                      <Text style={s.publicLine}>Allergies: {publicData.medicalProfile?.allergies?.join(", ") || "None"}</Text>
-                      <Text style={s.publicLine}>Conditions: {publicData.medicalProfile?.chronicConditions?.join(", ") || "None"}</Text>
-                      <Text style={s.publicLine}>Disease Start Year: {publicData.medicalSummary?.diseaseStartingYear || "Not set"}</Text>
-                      <Text style={s.publicLine}>Contacts: {publicData.emergencyContacts?.length || 0}</Text>
-                    </View>
+                    <Pressable style={s.publicPeekCard} onPress={() => setShowPublicProfileModal(true)}>
+                      <Text style={s.publicPeekTitle}>{publicData.user?.fullName || "Unknown User"}</Text>
+                      <Text style={s.publicPeekText}>Emergency profile loaded. Tap to view identity details, emergency profile, highlights, and contacts.</Text>
+                    </Pressable>
                   )}
                 </>
               )}
@@ -2131,6 +2494,7 @@ useEffect(() => {
           <Text style={s.apiHint}>API: {API}</Text>
           </ScrollView>
         </KeyboardAvoidingView>
+        {renderPublicProfileModal()}
         <View pointerEvents="box-none" style={s.toastWrap}>
           {toasts.map((toast) => (
             <Pressable
@@ -2156,12 +2520,12 @@ useEffect(() => {
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={s.root}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 22}
       >
       <ScrollView
         ref={mainScrollRef}
-        contentContainerStyle={[s.page, (tab === "profile" || tab === "contacts" || tab === "notifications") && s.pageForm]}
+        contentContainerStyle={[s.page, (tab === "profile" || tab === "contacts") && s.pageForm]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
@@ -2177,19 +2541,6 @@ useEffect(() => {
                 <Text style={s.brandMiniTitle}>ResQID</Text>
               </View>
               <View style={s.homeActions}>
-                <Pressable style={s.homeIconBtn} onPress={() => { setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true }))); setTab("notifications"); }}>
-                  <View>
-                    <Ionicons name="notifications-outline" size={22} color="#6b7280" />
-                    {unreadCount > 0 && (
-                      <View style={s.notifBadge}>
-                        <Text style={s.notifBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                </Pressable>
-                <Pressable style={s.homeIconBtn} onPress={openScanner}>
-                  <Ionicons name="scan-outline" size={22} color="#6b7280" />
-                </Pressable>
                 <Pressable style={s.homeIconBtn} onPress={logout}>
                   <Ionicons name="settings-outline" size={22} color="#6b7280" />
                 </Pressable>
@@ -2297,18 +2648,20 @@ useEffect(() => {
             )}
 
             {showIdentitySheet && (
-              <View style={s.sectionCard}>
+              <View style={s.identityCard}>
                 <View style={s.contactsHeader}>
                   <Text style={s.sectionCardTitle}>Identity Details</Text>
                   <Text style={s.viewAll} onPress={() => setShowIdentitySheet(false)}>Close</Text>
                 </View>
-                <Text style={s.publicLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
-                <Text style={s.publicLine}>Age: {profile.age || "Not set"}</Text>
-                <Text style={s.publicLine}>Address: {profile.address || user?.address || "Not set"}</Text>
-                <Text style={s.publicLine}>Date of Birth: {profile.dateOfBirth || "Not set"}</Text>
-                <Text style={s.publicLine}>Gender: {profile.gender || "Not set"}</Text>
+                <Text style={s.identityLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
+                <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
+                <Text style={s.identityLine}>Address: {profile.address || user?.address || "Not set"}</Text>
+                <Text style={s.identityLine}>Date of Birth: {profile.dateOfBirth || user?.dateOfBirth || "Not set"}</Text>
+                <Text style={s.identityLine}>Gender: {profile.gender || user?.gender || "Not set"}</Text>
               </View>
             )}
+
+           
 
             <View style={s.contactsHeader}>
               <Text style={s.sectionTitle}>Emergency Contacts</Text>
@@ -2462,7 +2815,13 @@ useEffect(() => {
                 style={s.inlineInput}
                 placeholder="12345-1234567-1"
                 value={profile.cnic}
-                onChangeText={(v) => setProfile((p) => ({ ...p, cnic: v }))}
+                onChangeText={(v) => {
+                  const digits = v.replace(/\D/g, "").slice(0, 13);
+                  const formatted = [digits.slice(0, 5), digits.slice(5, 12), digits.slice(12, 13)]
+                    .filter(Boolean)
+                    .join("-");
+                  setProfile((p) => ({ ...p, cnic: formatted }));
+                }}
               />
               <Text style={s.formLabel}>Age</Text>
               <TextInput
@@ -2515,48 +2874,8 @@ useEffect(() => {
             </View>
 
             <View style={[s.sectionCard, s.sectionCardSoft]}>
-              <Text style={s.sectionCardTitle}>Security</Text>
-              <Text style={s.sectionHint}>Enable local 2-step PIN lock for app and lock-screen mode.</Text>
-              {isLockEnabled ? (
-                <>
-                  <Text style={s.securityInfo}>2-step lock is enabled on this device.</Text>
-                  <View style={s.summaryRow}>
-                    <Pressable style={[s.primaryBtn, s.flexOne]} onPress={() => setIsLocked(true)}>
-                      <Text style={s.primaryBtnText}>Lock Now</Text>
-                    </Pressable>
-                    <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={disableLock}>
-                      <Text style={s.subtleBtnText}>Disable</Text>
-                    </Pressable>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <TextInput
-                    style={s.inlineInput}
-                    placeholder="Set 4-digit PIN"
-                    keyboardType="number-pad"
-                    secureTextEntry
-                    value={lockPinDraft}
-                    onChangeText={(v) => setLockPinDraft(v.replace(/[^0-9]/g, "").slice(0, 4))}
-                  />
-                  <TextInput
-                    style={s.inlineInput}
-                    placeholder="Confirm PIN"
-                    keyboardType="number-pad"
-                    secureTextEntry
-                    value={lockPinConfirm}
-                    onChangeText={(v) => setLockPinConfirm(v.replace(/[^0-9]/g, "").slice(0, 4))}
-                  />
-                  <Pressable style={s.primaryBtn} onPress={enableLock}>
-                    <Text style={s.primaryBtnText}>Enable 2-Step Lock</Text>
-                  </Pressable>
-                </>
-              )}
-              {!!lockHint && <Text style={s.sectionHint}>{lockHint}</Text>}
-            </View>
-
-            <View style={[s.sectionCard, s.sectionCardSoft]}>
               <Text style={s.sectionCardTitle}>Treatment Summary</Text>
+              <Text style={s.sectionHint}>You can save more than one treatment summary entry.</Text>
               <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
               <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
               <TextInput
@@ -2570,19 +2889,23 @@ useEffect(() => {
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
                 <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
               </View>
-              <View style={s.inlineRow}>
-                <TextInput style={s.inlineInput} placeholder="Checkup PDF URL or name (.pdf)" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
-                <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
-              </View>
+              <Pressable style={s.subtleBtn} onPress={uploadCheckupFile}>
+                <Text style={s.subtleBtnText}>Upload Checkup PDF</Text>
+              </Pressable>
               <View style={s.listWrap}>
                 {summary.checkupFiles.length === 0 ? (
                   <Text style={s.sectionHint}>No checkup files added</Text>
                 ) : (
                   summary.checkupFiles.map((item, idx) => (
                     <View key={`${item}-${idx}`} style={s.itemPill}>
-                      <Text style={s.itemPillText}>{item}</Text>
+                      <Text style={s.itemPillText} numberOfLines={1}>
+                        {displayCheckupFileLabel(item)}
+                      </Text>
+                      <Pressable style={s.itemPillAction} onPress={() => downloadCheckupFile(item)}>
+                        <Ionicons name="download-outline" size={18} color="#2563eb" />
+                      </Pressable>
                       <Pressable style={s.itemPillRemove} onPress={() => removeCheckupFile(item)}>
-                        <Ionicons name="close" size={14} color="#b91c1c" />
+                        <Ionicons name="close" size={18} color="#b91c1c" />
                       </Pressable>
                     </View>
                   ))
@@ -2607,6 +2930,31 @@ useEffect(() => {
                 )}
               </View>
               <TextInput style={s.textArea} multiline placeholder="Notes" value={summary.notes} onChangeText={(v) => setSummary((p) => ({ ...p, notes: v }))} />
+              <View style={s.summaryRow}>
+                <Pressable style={[s.primaryBtn, s.flexOne]} onPress={saveSummaryDraft}>
+                  <Text style={s.primaryBtnText}>{isEditingSummaryEntry ? "Update Entry" : "Add Entry"}</Text>
+                </Pressable>
+                <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={clearSummaryDraft}>
+                  <Text style={s.subtleBtnText}>Clear Form</Text>
+                </Pressable>
+              </View>
+              <View style={s.listColumn}>
+                {getActiveSummaries().length === 0 ? (
+                  <Text style={s.sectionHint}>No treatment summaries added</Text>
+                ) : (
+                  getActiveSummaries().map((item, idx) => (
+                    <View key={item.id || `${item.hospitalName}-${idx}`} style={s.savedSummaryCard}>
+                      <Text style={s.savedSummaryTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                      <Text style={s.savedSummaryLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                      <Text style={s.savedSummaryLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                      <View style={s.contactActions}>
+                        <Text style={s.contactAction} onPress={() => editSummaryEntry(item)}>Edit</Text>
+                        <Text style={s.contactAction} onPress={() => deleteSummaryEntry(item.id)}>Delete</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
             </View>
           </>
         )}
@@ -2631,96 +2979,24 @@ useEffect(() => {
             </View>
 
             <View style={s.sectionCard}>
-              <Text style={s.sectionCardTitle}>Treatment Summary</Text>
-              <Text style={s.publicLine}>Hospital: {summary.hospitalName || "Not set"}</Text>
-              <Text style={s.publicLine}>Doctor: {summary.doctorName || "Not set"}</Text>
-              <Text style={s.publicLine}>Disease Starting Year: {summary.diseaseStartingYear || "Not set"}</Text>
-              <Text style={s.publicLine}>Duration: {summary.treatmentDuration || "Not set"}</Text>
-              <Text style={s.publicLine}>Status: {summary.treatmentStatus || "Not set"}</Text>
-              <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(summary.checkupFiles)}</Text>
-              <Text style={s.publicLine}>Current Medications: {joinOrFallback(summary.currentMedications)}</Text>
-              <Text style={s.publicLine}>Notes: {summary.notes || "Not set"}</Text>
-            </View>
-
-            <View style={s.qrTop}><Text style={s.sectionCardTitle}>Medical QR</Text></View>
-            <View style={s.qrAvatar}><Text style={s.qrAvatarText}>{firstName.slice(0, 1).toUpperCase()}</Text></View>
-            <Text style={s.qrName}>{user.fullName}</Text>
-            <Text style={s.qrSub}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
-
-            <View style={s.qrCard}>
-              {qr?.qrCodeDataUrl ? (
-                <Image source={{ uri: qr.qrCodeDataUrl }} style={s.qrImage} />
+              <Text style={s.sectionCardTitle}>Treatment Summaries</Text>
+              {getActiveSummaries().length === 0 ? (
+                <Text style={s.publicLine}>No treatment summary added.</Text>
               ) : (
-                <Text style={s.qrPlaceholder}>No QR generated yet</Text>
+                getActiveSummaries().map((item, idx) => (
+                  <View key={item.id || `${item.hospitalName}-${idx}`} style={s.summaryListBlock}>
+                    <Text style={s.summaryListTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                    <Text style={s.publicLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                    <Text style={s.publicLine}>Disease Starting Year: {item.diseaseStartingYear || "Not set"}</Text>
+                    <Text style={s.publicLine}>Duration: {item.treatmentDuration || "Not set"}</Text>
+                    <Text style={s.publicLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                    <Text style={s.publicLine}>Current Medications: {joinOrFallback(item.currentMedications)}</Text>
+                    <Text style={s.publicLine}>Notes: {item.notes || "Not set"}</Text>
+                  </View>
+                ))
               )}
             </View>
-            <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
-            <View style={s.urlCard}>
-              <Text style={s.urlLabel}>Emergency URL</Text>
-              <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
-              <View style={s.urlActionRow}>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={copyEmergencyUrl}>
-                  <Ionicons name="copy-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Copy Link</Text>
-                </Pressable>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={openEmergencyUrl}>
-                  <Ionicons name="open-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Open in Browser</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={s.qrActionRow}>
-              <Pressable style={s.subtleBtn} onPress={regenQr}><Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text></Pressable>
-            </View>
-          </>
-        )}
-
-        {tab === "notifications" && (
-          <>
-            <View style={s.notifScreenHead}>
-              <Pressable onPress={() => setTab("home")}>
-                <Ionicons name="arrow-back" size={24} color="#111827" />
-              </Pressable>
-              <Text style={s.screenTitle}>Notifications</Text>
-            </View>
-
-            {notifications.length === 0 ? (
-              <View style={s.emptyContactCard}>
-                <View style={s.emptyIconWrap}>
-                  <Ionicons name="notifications-off-outline" size={42} color="#6b7280" />
-                </View>
-                <Text style={s.emptyTitle}>No Notifications Yet</Text>
-                <Text style={s.emptySub}>When someone sends an SOS alert, it will appear here.</Text>
-              </View>
-            ) : (
-              notifications.map((notif) => (
-                <View key={notif.id} style={s.notifCard}>
-                  <View style={s.notifCardHeader}>
-                    <View style={s.notifIconBubble}>
-                      <Ionicons name="warning" size={18} color="#fff" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.notifAlertLabel}>SOS ALERT</Text>
-                      <Text style={s.notifSender}>{notif.senderName}</Text>
-                    </View>
-                    <Text style={s.notifTime}>{(() => { const diff = Date.now() - new Date(notif.createdAt).getTime(); const mins = Math.floor(diff / 60000); if (mins < 1) return "Just now"; if (mins < 60) return `${mins} min${mins > 1 ? "s" : ""} ago`; const hrs = Math.floor(mins / 60); if (hrs < 24) return `${hrs} hr${hrs > 1 ? "s" : ""} ago`; return `${Math.floor(hrs / 24)}d ago`; })()}</Text>
-                  </View>
-                  {!!notif.message && <Text style={s.notifMessage}>Message: {notif.message}</Text>}
-                  <Pressable
-                    style={s.notifMapBtn}
-                    onPress={() => {
-                      if (Number.isFinite(notif.latitude) && Number.isFinite(notif.longitude)) {
-                        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${notif.latitude},${notif.longitude}`);
-                      }
-                    }}
-                  >
-                    <Ionicons name="location" size={18} color="#fff" />
-                    <Text style={s.notifMapBtnText}>Tap to see Current Location</Text>
-                  </Pressable>
-                </View>
-              ))
-            )}
+            <Pressable style={s.subtleBtn} onPress={() => setTab("profile")}><Text style={s.subtleBtnText}>Edit Summaries</Text></Pressable>
           </>
         )}
 
@@ -2790,53 +3066,6 @@ useEffect(() => {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal
-        visible={showPublicProfileModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowPublicProfileModal(false)}
-      >
-        <View style={s.publicModalBackdrop}>
-          <View style={s.publicModalCard}>
-            <View style={s.contactsHeader}>
-              <Text style={s.sectionCardTitle}>Scanned Emergency Profile</Text>
-              <Text style={s.viewAll} onPress={() => setShowPublicProfileModal(false)}>Close</Text>
-            </View>
-            {publicData ? (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={s.publicCard}>
-                  <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
-                  <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
-                  <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
-                  <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
-                  <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
-                  <Text style={s.publicLine}>Date of Birth: {publicData.medicalProfile?.dateOfBirth || "Not set"}</Text>
-                  <Text style={s.publicLine}>Gender: {publicData.medicalProfile?.gender || "Not set"}</Text>
-                  <Text style={s.publicLine}>Allergies: {joinOrFallback(publicData.medicalProfile?.allergies || [])}</Text>
-                  <Text style={s.publicLine}>Conditions: {joinOrFallback(publicData.medicalProfile?.chronicConditions || [])}</Text>
-                  <Text style={s.publicLine}>Medications: {joinOrFallback(publicData.medicalProfile?.medications || [])}</Text>
-                  <Text style={s.publicLine}>Emergency Notes: {publicData.medicalProfile?.emergencyNotes || "Not set"}</Text>
-                  <Text style={s.publicLine}>Hospital: {publicData.medicalSummary?.hospitalName || "Not set"}</Text>
-                  <Text style={s.publicLine}>Doctor: {publicData.medicalSummary?.doctorName || "Not set"}</Text>
-                  <Text style={s.publicLine}>Disease Starting Year: {publicData.medicalSummary?.diseaseStartingYear || "Not set"}</Text>
-                  <Text style={s.publicLine}>Treatment Duration: {publicData.medicalSummary?.treatmentDuration || "Not set"}</Text>
-                  <Text style={s.publicLine}>Treatment Status: {publicData.medicalSummary?.treatmentStatus || "Not set"}</Text>
-                  <Text style={s.publicLine}>Current Medications: {joinOrFallback(publicData.medicalSummary?.currentMedications || [])}</Text>
-                  <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(publicData.medicalSummary?.checkupFiles || [])}</Text>
-                  <Text style={s.publicLine}>Summary Notes: {publicData.medicalSummary?.notes || "Not set"}</Text>
-                  <Text style={s.publicLine}>Emergency Contacts: {publicData.emergencyContacts?.length || 0}</Text>
-                  {(publicData.emergencyContacts || []).map((contact, index) => (
-                    <Text key={`${contact?.phoneNumber || contact?.email || "contact"}-${index}`} style={s.publicLine}>
-                      {`${index + 1}. ${contact?.name || "Unknown"} | ${contact?.phoneNumber || "No phone"} | ${contact?.relationship || "No relationship"}${contact?.email ? ` | ${contact.email}` : ""}`}
-                    </Text>
-                  ))}
-                </View>
-              </ScrollView>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
-
       <View style={s.bottomBar}>
         <Pressable style={s.navItem} onPress={() => setTab("home")}>
           <Ionicons name="home-outline" size={22} color={tab === "home" ? "#b91c1c" : "#6b7280"} />
@@ -2884,28 +3113,7 @@ useEffect(() => {
           </View>
         </View>
       )}
-      {isLocked && (
-        <View style={s.lockOverlay}>
-          <View style={s.lockCard}>
-            <Ionicons name="lock-closed-outline" size={42} color="#b91c1c" />
-            <Text style={s.lockTitle}>Lock Screen Enabled</Text>
-            <Text style={s.lockSub}>Enter your 4-digit PIN to continue.</Text>
-            <TextInput
-              style={s.lockInput}
-              keyboardType="number-pad"
-              secureTextEntry
-              value={unlockPin}
-              onChangeText={(v) => setUnlockPin(v.replace(/[^0-9]/g, "").slice(0, 4))}
-              placeholder="PIN"
-              placeholderTextColor="#9ca3af"
-            />
-            {!!lockHint && <Text style={s.fieldError}>{lockHint}</Text>}
-            <Pressable style={s.primaryBtn} onPress={unlockApp}>
-              <Text style={s.primaryBtnText}>Unlock</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      {renderPublicProfileModal()}
       <View pointerEvents="box-none" style={s.toastWrap}>
         {toasts.map((toast) => (
           <Pressable
@@ -3018,6 +3226,18 @@ const s = StyleSheet.create({
 
   scannerWrap: { borderRadius: 16, overflow: "hidden" },
   scanner: { width: "100%", height: 380 },
+  scannerFallback: {
+    minHeight: 220,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 10,
+  },
+  scannerFallbackText: { color: "#4b5563", textAlign: "center" },
 
   publicCard: {
     borderWidth: 1,
@@ -3031,30 +3251,81 @@ const s = StyleSheet.create({
   publicName: { fontSize: 22, fontWeight: "800", color: "#111827" },
   publicLine: { color: "#374151" },
   publicPeekCard: {
-    borderRadius: 18,
-    backgroundColor: "#eff6ff",
     borderWidth: 1,
-    borderColor: "#bfdbfe",
-    padding: 16,
-    gap: 6,
+    borderColor: "#fecaca",
+    borderRadius: 18,
+    backgroundColor: "#fff7f7",
+    padding: 14,
     marginTop: 10,
+    gap: 6,
   },
-  publicPeekTitle: { fontSize: 16, fontWeight: "800", color: "#1e3a8a" },
-  publicPeekText: { color: "#1d4ed8", lineHeight: 20 },
-  publicModalBackdrop: {
+  publicPeekTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  publicPeekText: { color: "#475569", lineHeight: 20 },
+  publicModalOverlay: {
     flex: 1,
-    backgroundColor: "#11182788",
+    backgroundColor: "rgba(15, 23, 42, 0.52)",
     justifyContent: "flex-end",
   },
   publicModalCard: {
-    maxHeight: "78%",
-    backgroundColor: "#f9fafb",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
+    maxHeight: "90%",
+    backgroundColor: "#fffaf8",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderColor: "#fed7d7",
+    paddingHorizontal: 18,
+    paddingTop: 16,
     paddingBottom: 28,
-    gap: 14,
   },
+  publicModalTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  publicModalBadge: {
+    backgroundColor: "#fee2e2",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  publicModalBadgeText: { color: "#b91c1c", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+  publicModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  publicModalScroll: { gap: 12, paddingBottom: 22 },
+  publicModalTitle: { fontSize: 28, fontWeight: "800", color: "#111827" },
+  publicModalSubtitle: { color: "#6b7280", lineHeight: 20, marginBottom: 4 },
+  publicModalSection: {
+    borderWidth: 1,
+    borderColor: "#f3d7d9",
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    padding: 14,
+    gap: 10,
+  },
+  publicModalSectionTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
+  publicModalLineRow: {
+    borderTopWidth: 1,
+    borderTopColor: "#f8dede",
+    paddingTop: 10,
+    gap: 4,
+  },
+  publicModalLineLabel: { color: "#b91c1c", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+  publicModalLineValue: { color: "#334155", fontSize: 15, lineHeight: 21 },
+  publicContactCard: {
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    borderRadius: 16,
+    backgroundColor: "#f8fbff",
+    padding: 12,
+    gap: 3,
+  },
+  publicContactName: { fontSize: 15, fontWeight: "800", color: "#111827" },
+  publicContactLine: { color: "#475569", fontSize: 13 },
+  publicModalEmpty: { color: "#6b7280" },
   snapshotStamp: { color: "#6b7280", fontSize: 12, marginTop: 8 },
 
   apiHint: { color: "#9ca3af", textAlign: "center", fontSize: 12, marginTop: 8 },
@@ -3181,21 +3452,30 @@ const s = StyleSheet.create({
   itemPill: {
     backgroundColor: "#f3f4f6",
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 8,
     maxWidth: "100%",
   },
-  itemPillText: { color: "#334155", fontSize: 12 },
+  itemPillText: { color: "#334155", fontSize: 13, flexShrink: 1, maxWidth: 180 },
   itemPillRemove: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fee2e2",
+  },
+  itemPillAction: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe",
   },
   textArea: {
     borderWidth: 1,
@@ -3210,6 +3490,10 @@ const s = StyleSheet.create({
   compactTextArea: { minHeight: 62 },
   sectionCardSoft: { backgroundColor: "#fafafa" },
   summaryRow: { flexDirection: "row", gap: 8 },
+  listColumn: { gap: 8 },
+  savedSummaryCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, backgroundColor: "#fff", padding: 12, gap: 4 },
+  savedSummaryTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
+  savedSummaryLine: { color: "#475569", fontSize: 13 },
   securityInfo: { color: "#334155", fontSize: 14 },
 
   qrTop: { alignItems: "center" },
@@ -3229,6 +3513,8 @@ const s = StyleSheet.create({
   qrActionRow: { flexDirection: "row", gap: 8, marginTop: 8 },
   ghostBtn: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, minHeight: 44, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, backgroundColor: "#fff" },
   ghostBtnText: { color: "#111827", fontWeight: "700" },
+  summaryListBlock: { borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 10, marginTop: 4, gap: 2 },
+  summaryListTitle: { fontSize: 15, fontWeight: "800", color: "#111827", marginBottom: 2 },
 
   contactsTip: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 20, padding: 16, backgroundColor: "#f1f5f9", marginTop: 6 },
   contactsTipText: { color: "#334155", fontSize: 18 / 1.2 },
@@ -3322,78 +3608,5 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontSize: 18,
     letterSpacing: 4,
-  },
-
-  notifBadge: {
-    position: "absolute",
-    top: -6,
-    right: -8,
-    backgroundColor: "#e3262f",
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  notifBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
-
-  notifScreenHead: { flexDirection: "row", alignItems: "center", gap: 12 },
-
-  notifCard: {
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    padding: 14,
-    gap: 10,
-  },
-  notifCardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  notifIconBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#e3262f",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notifAlertLabel: { fontSize: 11, fontWeight: "800", color: "#b91c1c", letterSpacing: 0.5 },
-  notifSender: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  notifTime: { fontSize: 12, color: "#6b7280" },
-  notifMessage: { color: "#334155", fontSize: 14 },
-  notifMapBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#e3262f",
-    borderRadius: 12,
-    minHeight: 44,
-    paddingHorizontal: 16,
-  },
-  notifMapBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  sosSetupItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  sosSetupItemLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  sosSetupItemLabel: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  sosSetupButton: {
-    color: "#3b82f6",
-    fontWeight: "700",
-    fontSize: 14,
   },
 });

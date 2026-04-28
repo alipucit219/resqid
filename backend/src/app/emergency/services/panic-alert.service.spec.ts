@@ -24,6 +24,9 @@ describe("PanicAlertService", () => {
       {} as any,
       { find: jest.fn() } as any,
       {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
     );
 
     await service.adminList({

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "965289718600",
+    "project_id": "resid-41bd0",
+    "storage_bucket": "resid-41bd0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965289718600:android:9ca280ee5a74c8c6bcb97d",
+        "android_client_info": {
+          "package_name": "com.anonymous.mobileapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAp3Hk51VCRayq9BFbQTs0z-uNZ7q3uOQE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,8 +1,23 @@
-import { registerRootComponent } from 'expo';
+import { registerRootComponent } from "expo";
+import notifee, {
+  AndroidImportance,
+  AndroidVisibility,
+} from "react-native-notify-kit";
+import App from "./App";
 
-import App from './App';
+const SOS_CHANNEL_ID = "sos_channel_lock_v2";
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
+async function ensureSosChannel(): Promise<void> {
+  await notifee.createChannel({
+    id: SOS_CHANNEL_ID,
+    name: "SOS Emergency",
+    importance: AndroidImportance.HIGH,
+    visibility: AndroidVisibility.PUBLIC,
+    vibration: true,
+    lights: true,
+  });
+}
+
+void ensureSosChannel();
+
 registerRootComponent(App);
