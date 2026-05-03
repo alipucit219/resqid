@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
   NotFoundException,
 } from "@nestjs/common";
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomInt } from "crypto";
 import { HashService, EmailService } from "../../../shared/services";
 import {
   ChangePasswordDto,
@@ -31,6 +31,22 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
   ) {}
+
+  private async findValidResetUser(email: string, code: string) {
+    const hashedCode = createHash("sha256").update(code).digest("hex");
+    const user = await this.userService.findByEmail(email, true);
+
+    if (
+      !user ||
+      user.resetTokenHash !== hashedCode ||
+      !user.resetTokenExpiry ||
+      user.resetTokenExpiry < new Date()
+    ) {
+      throw new BadRequestException("Reset code is invalid or expired.");
+    }
+
+    return user;
+  }
 
   async isPasswordValid(plainPassword: string, hashedPassword: string) {
     return await this.hashService.check(plainPassword, hashedPassword);
@@ -128,46 +144,57 @@ export class AuthService {
   async forgotPassword(email: string) {
     const user = await this.userService.findByEmail(email, true);
     if (!user) {
-      return {
-        message:
-          "If an account exists for this email, reset instructions have been sent.",
-      };
+      this.logger.warn(`Password reset requested for non-existent email: ${email}`);
+      throw new BadRequestException("No account found for this email.");
     }
 
-    const rawToken = randomBytes(32).toString("hex");
-    const hashedToken = createHash("sha256").update(rawToken).digest("hex");
+    const rawCode = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const hashedToken = createHash("sha256").update(rawCode).digest("hex");
     const expiry = new Date(
       Date.now() + this.configService.getResetTokenExpiryMinutes() * 60 * 1000,
     );
 
     await this.userService.setResetToken(user.id, hashedToken, expiry);
 
-    const resetLink = `${this.configService.getFrontendUrl().replace(/\/$/, "")}/reset-password?token=${rawToken}`;
     const emailPayload = {
       to: user.email,
-      subject: "Reset your password",
-      text: `Use this link to reset your password: ${resetLink}`,
-      html: `<p>Use the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p>`,
+      subject: "Your password reset code",
+      text: [
+        "Use this code to reset your password:",
+        rawCode,
+        "",
+        `This code will expire in ${this.configService.getResetTokenExpiryMinutes()} minutes.`,
+      ].join("\n"),
+      html: [
+        "<p>Use this code to reset your password:</p>",
+        `<p><strong style="font-size: 24px; letter-spacing: 4px;">${rawCode}</strong></p>`,
+        `<p>This code will expire in ${this.configService.getResetTokenExpiryMinutes()} minutes.</p>`,
+      ].join(""),
     };
 
     const result = await this.emailService.sendMail(emailPayload);
     if (result.fallback) {
-      this.logger.warn(`Password reset fallback link for ${user.email}: ${resetLink}`);
+      this.logger.warn(`Password reset fallback code for ${user.email}: ${rawCode}`);
+    } else {
+      this.logger.log(`Password reset code email sent for ${user.email}`);
     }
 
     return {
-      message:
-        "If an account exists for this email, reset instructions have been sent.",
+      message: "Password reset code sent to your email.",
+      resetCode: result.fallback ? rawCode : undefined,
+      usedFallback: result.fallback,
+    };
+  }
+
+  async verifyResetCode(email: string, code: string) {
+    await this.findValidResetUser(email, code);
+    return {
+      message: "Reset code verified.",
     };
   }
 
   async resetPassword(body: ResetPasswordDto) {
-    const hashedToken = createHash("sha256").update(body.token).digest("hex");
-    const user = await this.userService.findByResetTokenHash(hashedToken);
-
-    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
-      throw new BadRequestException("Reset token is invalid or expired.");
-    }
+    const user = await this.findValidResetUser(body.email, body.code);
 
     user.password = await this.hashService.hashPassword(body.newPassword);
     user.resetTokenHash = null;

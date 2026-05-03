@@ -110,4 +110,3 @@ export class LoginSessionService {
     return userIds.filter((id) => !usersWithSessionSet.has(id));
   }
 }
-

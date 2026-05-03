@@ -55,9 +55,7 @@ export class EmergencyAccessService {
   }
 
   private buildEmergencyUrl(token: string) {
-    const base = this.configService.getBaseUrl().replace(/\/$/, "");
-    const apiPrefix = this.configService.getGlobalAPIPrefix();
-    return `${base}/${apiPrefix}/emergency-access/${token}`;
+    return `resqid://emergency-access/${token}`;
   }
 
   private async ensureUserExists(userId: string) {
@@ -242,6 +240,7 @@ export class EmergencyAccessService {
             checkupFiles: summary.checkupFiles || [],
             currentMedications: summary.currentMedications || [],
             notes: summary.notes || null,
+            entries: Array.isArray(summary.entries) ? summary.entries : [],
           }
         : null,
       emergencyContacts: contacts.map((contact) => ({

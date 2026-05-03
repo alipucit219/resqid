@@ -4,7 +4,8 @@ import modifyError from 'src/utils/customError'
 
 type MedicalProfileParams = {
   search?: string
-  userId?: string
+  bloodGroup?: string
+  allergy?: string
   page?: number
   limit?: number
 }
@@ -69,4 +70,3 @@ const medicalProfilesSlice = createSlice({
 })
 
 export default medicalProfilesSlice.reducer
-

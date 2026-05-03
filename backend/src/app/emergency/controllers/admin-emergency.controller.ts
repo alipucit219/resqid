@@ -79,12 +79,24 @@ export class AdminEmergencyController {
     return await this.medicalSummaryService.upsertByUserId(userId, payload);
   }
 
+  @ApiOperation({ summary: "Get medical summary by user id" })
+  @Get("medical-summaries/:userId")
+  async getMedicalSummaryByUserId(@Param("userId") userId: string): Promise<any> {
+    return await this.medicalSummaryService.adminGetByUserId(userId);
+  }
+
   @ApiOperation({ summary: "List emergency contacts" })
   @Get("emergency-contacts")
   async listEmergencyContacts(
     @Query() query: EmergencyAdminListQueryDto,
   ): Promise<unknown> {
     return await this.emergencyContactService.adminList(query);
+  }
+
+  @ApiOperation({ summary: "Get emergency contacts by user id" })
+  @Get("emergency-contacts/:userId")
+  async getEmergencyContactsByUserId(@Param("userId") userId: string): Promise<any> {
+    return await this.emergencyContactService.adminGetByUserId(userId);
   }
 
   @ApiOperation({ summary: "Create emergency contact for a user" })
@@ -121,7 +133,7 @@ export class AdminEmergencyController {
 
   @ApiOperation({ summary: "List qr-access metadata" })
   @Get("qr-access")
-  async listQrAccess(@Query() query: EmergencyAdminListQueryDto) {
+  async listQrAccess(@Query() query: EmergencyAdminListQueryDto): Promise<any> {
     return await this.emergencyAccessService.adminList(query);
   }
 
@@ -137,6 +149,12 @@ export class AdminEmergencyController {
     @Query() query: EmergencyAdminListQueryDto,
   ): Promise<unknown> {
     return await this.panicAlertService.adminList(query);
+  }
+
+  @ApiOperation({ summary: "Get emergency reports" })
+  @Get("reports")
+  async getReports(): Promise<any> {
+    return await this.medicalProfileService.adminReports();
   }
 
   @ApiOperation({ summary: "Get panic alert details" })

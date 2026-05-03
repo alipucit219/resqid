@@ -3,13 +3,26 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
+  Res,
   Put,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { diskStorage } from "multer";
+import { extname, join } from "path";
+import type { Request } from "express";
+import type { Response } from "express";
+import { existsSync, mkdirSync } from "fs";
 import { AuthenticatedRequestPayload } from "src/shared/decorators";
 import { IAuthenticatedRequest } from "src/shared/interfaces";
+import { ConfigService } from "src/config";
+import { Public } from "src/shared/decorators/is-public.decorator";
 import {
   CreateEmergencyContactDto,
   CreatePanicAlertDto,
@@ -23,11 +36,14 @@ import { EmergencyContactService } from "../services/emergency-contact.service";
 import { EmergencyAccessService } from "../services/emergency-access.service";
 import { PanicAlertService } from "../services/panic-alert.service";
 
+const getCheckupUploadDir = () => join(process.cwd(), "public", "uploads", "checkups");
+
 @ApiBearerAuth()
 @ApiTags("Emergency - Me")
 @Controller("me")
 export class MeEmergencyController {
   constructor(
+    private readonly configService: ConfigService,
     private readonly medicalProfileService: MedicalProfileService,
     private readonly medicalSummaryService: MedicalSummaryService,
     private readonly emergencyContactService: EmergencyContactService,
@@ -63,6 +79,76 @@ export class MeEmergencyController {
     @Body() payload: UpsertMedicalSummaryDto,
   ) {
     return await this.medicalSummaryService.upsertByUserId(req.user.id, payload);
+  }
+
+  @ApiOperation({ summary: "Upload a PDF checkup file for requesting user's medical summary" })
+  @HttpCode(HttpStatus.CREATED)
+  @Post("medical-summary/checkup-files")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadDir = getCheckupUploadDir();
+          mkdirSync(uploadDir, { recursive: true });
+          cb(null, uploadDir);
+        },
+        filename: (req: Request, file, cb) => {
+          const authenticatedRequest = req as unknown as IAuthenticatedRequest;
+          const extension = extname(file.originalname || "").toLowerCase() || ".pdf";
+          const safeBaseName = String(file.originalname || "checkup")
+            .replace(/\.[^.]+$/, "")
+            .replace(/[^a-zA-Z0-9-_]/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "")
+            .slice(0, 60) || "checkup";
+          cb(null, `${authenticatedRequest.user.id}-${Date.now()}-${safeBaseName}${extension}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        const isPdf = /\.pdf$/i.test(file.originalname || "") || file.mimetype === "application/pdf";
+        cb(isPdf ? null : new Error("Only PDF files are allowed."), isPdf);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadCheckupFile(@UploadedFile() file: Express.Multer.File) {
+    const baseUrl = this.configService.getBaseUrl().replace(/\/$/, "");
+    const relativePath = `/uploads/checkups/${file.filename}`;
+
+    return {
+      fileName: file.originalname,
+      storedFileName: file.filename,
+      mimeType: file.mimetype,
+      size: file.size,
+      url: `${baseUrl}${relativePath}`,
+      path: relativePath,
+    };
+  }
+
+  @Public()
+  @ApiOperation({ summary: "Download a checkup PDF file from server uploads" })
+  @Get("medical-summary/checkup-files/:fileName/download")
+  downloadCheckupFile(
+    @Param("fileName") fileName: string,
+    @Res() res: Response,
+  ) {
+    const safeFileName = String(fileName || "").trim();
+    if (!safeFileName || safeFileName.includes("/") || safeFileName.includes("\\")) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        message: "Invalid file name.",
+      });
+    }
+
+    const filePath = join(getCheckupUploadDir(), safeFileName);
+    if (!existsSync(filePath)) {
+      return res.status(HttpStatus.NOT_FOUND).json({
+        message: "File not found.",
+      });
+    }
+
+    return res.download(filePath, safeFileName);
   }
 
   @ApiOperation({ summary: "List requesting user's emergency contacts" })
@@ -120,4 +206,3 @@ export class MeEmergencyController {
     return await this.panicAlertService.createForUser(req.user.id, payload);
   }
 }
-

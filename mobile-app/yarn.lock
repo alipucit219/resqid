@@ -2372,6 +2372,11 @@ expo-device@~8.0.10:
   dependencies:
     ua-parser-js "^0.7.33"
 
+expo-document-picker@~14.0.7:
+  version "14.0.8"
+  resolved "https://registry.npmjs.org/expo-document-picker/-/expo-document-picker-14.0.8.tgz"
+  integrity sha512-3tyQKpPqWWFlI8p9RiMX1+T1Zge5mEKeBuXWp1h8PEItFMUDSiOJbQ112sfdC6Hxt8wSxreV9bCRl/NgBdt+fA==
+
 expo-file-system@~19.0.21:
   version "19.0.21"
   resolved "https://registry.npmjs.org/expo-file-system/-/expo-file-system-19.0.21.tgz"
@@ -2419,7 +2424,7 @@ expo-modules-core@3.0.29:
   dependencies:
     invariant "^2.2.4"
 
-expo-notifications@~0.32.16:
+expo-notifications@~0.32.12, expo-notifications@~0.32.16:
   version "0.32.16"
   resolved "https://registry.npmjs.org/expo-notifications/-/expo-notifications-0.32.16.tgz"
   integrity sha512-QQD/UA6v7LgvwIJ+tS7tSvqJZkdp0nCSj9MxsDk/jU1GttYdK49/5L2LvE/4U0H7sNBz1NZAyhDZozg8xgBLXw==

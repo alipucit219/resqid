@@ -29,6 +29,11 @@ const navigation = (): HorizontalNavItemsType => {
       path: '/apps/emergency/medical-summaries'
     },
     {
+      title: 'Reports',
+      icon: 'tabler:report-analytics',
+      path: '/apps/emergency/reports'
+    },
+    {
       title: 'QR Access',
       icon: 'tabler:qrcode',
       path: '/apps/emergency/qr-access'

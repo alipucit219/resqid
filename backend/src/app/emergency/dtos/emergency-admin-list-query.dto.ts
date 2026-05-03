@@ -19,6 +19,18 @@ export class EmergencyAdminListQueryDto extends PaginationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @Transform(({ value }) => trim(value))
+  bloodGroup?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => trim(value))
+  allergy?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   status?: string;
 
   @ApiPropertyOptional({ description: "Filter alerts created at or after this ISO date" })

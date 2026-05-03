@@ -8,11 +8,18 @@ type WithAuthorizationProps = {
 }
 
 export function WithAuthorization({ component, requiredPermission }: WithAuthorizationProps): ReactElement {
-  const { permissionsAllow: userAllowedPermissions } = useSelector((state: RootState) => state.auth)
+  const { permissionsAllow: userAllowedPermissions, user } = useSelector((state: RootState) => state.auth)
 
-  if ((userAllowedPermissions as string[]).includes(requiredPermission)) {
+  const role = String(user?.role || '').toLowerCase()
+  const permissions = Array.isArray(userAllowedPermissions) ? userAllowedPermissions : []
+
+  if (role === 'admin' || permissions.length === 0) {
     return component
   }
 
-  return <></> // Or consider returning something like <div>Access Denied</div>
+  if (permissions.includes(requiredPermission)) {
+    return component
+  }
+
+  return <></>
 }
