@@ -116,6 +116,7 @@ type Summary = {
 type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
 type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Contact[]; qr: QrData | null; savedAt: string };
 type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
+type StoredLocation = { latitude: number; longitude: number; capturedAt: string };
 type QueueRow = { id: number; kind: QueueKind; payload: string };
 
 const normalizeApiBase = (value: string) => {
@@ -248,15 +249,20 @@ const toTextValue = (value: unknown, fallback = "Not set") => {
   const text = String(value ?? "").trim();
   return text || fallback;
 };
-const buildLockScreenPreview = (baseUser: User, medicalProfile: Profile) => {
+const buildLockScreenPreview = (baseUser: User, medicalProfile: Profile, emergencyContacts: Contact[] = []) => {
   const address = toTextValue(medicalProfile.address || baseUser.address, "Not set");
   const bloodGroup = toTextValue(medicalProfile.bloodGroup, "Not set");
   const allergies = joinOrFallback(medicalProfile.allergies);
+  const primaryContact = emergencyContacts.find((contact) => contact.isPrimary) || emergencyContacts[0];
+  const contactLine = primaryContact
+    ? `${toTextValue(primaryContact.name, "Emergency contact")} (${toTextValue(primaryContact.phoneNumber)})`
+    : "No emergency contact added";
 
   return {
     title: `${toTextValue(baseUser.fullName, "User")} Emergency Card`,
-    body: `Address: ${address} | Blood Group: ${bloodGroup} | Allergies: ${allergies}`,
-    expandedText: `Address: ${address}\nBlood Group: ${bloodGroup}\nAllergies: ${allergies}\nTriple-press Volume Up to send SOS.`,
+    body: `Blood Group: ${bloodGroup} | Emergency Contact: ${contactLine}`,
+    expandedText:
+      `Address: ${address}\nBlood Group: ${bloodGroup}\nAllergies: ${allergies}\nEmergency Contact: ${contactLine}\nTriple-press Volume Up to send SOS.`,
   };
 };
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Unexpected error");
@@ -812,6 +818,17 @@ export default function App() {
     await updateQCount();
   };
 
+  const persistLastLocation = async (loc: { latitude: number; longitude: number }) => {
+    setLastLoc(loc);
+    if (!db) return;
+    const storedLocation: StoredLocation = {
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      capturedAt: new Date().toISOString(),
+    };
+    await setKV(db, "last_location", storedLocation);
+  };
+
   const toPublic = (snap: Snapshot): PublicData => ({
     user: { fullName: snap.user.fullName },
     medicalProfile: {
@@ -918,7 +935,7 @@ export default function App() {
         emergencyNotes: profileRes.emergencyNotes || "",
         dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
         gender: profileRes.gender || activeUser?.gender || "",
-      }));
+      }, contactsRes || []));
     }
   };
 
@@ -994,10 +1011,14 @@ export default function App() {
       const cachedUser = await getKV<User>(localDb, "auth_user");
       const cachedLockSettings = await getKV<{ isLockEnabled: boolean; lockPin: string }>(localDb, "lock_settings");
       const cachedNotifications = await getKV<NotificationItem[]>(localDb, "notifications");
+      const cachedLastLocation = await getKV<StoredLocation>(localDb, "last_location");
       if (!active) return;
 
       setSnapshot(cachedSnapshot);
       if (cachedNotifications) setNotifications(cachedNotifications);
+      if (cachedLastLocation && Number.isFinite(cachedLastLocation.latitude) && Number.isFinite(cachedLastLocation.longitude)) {
+        setLastLoc({ latitude: cachedLastLocation.latitude, longitude: cachedLastLocation.longitude });
+      }
       if (cachedLockSettings) {
         setIsLockEnabled(Boolean(cachedLockSettings.isLockEnabled));
         setLockPin(String(cachedLockSettings.lockPin || ""));
@@ -1094,6 +1115,39 @@ export default function App() {
     if (!db) return;
     void setKV(db, "notifications", notifications);
   }, [db, notifications]);
+
+  useEffect(() => {
+    if (!db || !token || !user) return;
+
+    let active = true;
+    const syncCachedLocation = async () => {
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== "granted") return;
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (!active || !lastKnown) return;
+      await persistLastLocation({
+        latitude: lastKnown.coords.latitude,
+        longitude: lastKnown.coords.longitude,
+      });
+    };
+
+    void syncCachedLocation();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void syncCachedLocation();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [db, token, user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    void startSosNotification(buildLockScreenPreview(user, profile, contacts));
+  }, [contacts]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -1417,7 +1471,7 @@ useEffect(() => {
       const [profileMsg, summaryMsg] = await Promise.all([saveProfileCore(), saveSummaryCore()]);
       const savedOffline = /offline/i.test(profileMsg) || /offline/i.test(summaryMsg);
       if (user) {
-        void startSosNotification(buildLockScreenPreview(user, profile));
+        void startSosNotification(buildLockScreenPreview(user, profile, contacts));
       }
       setOk(savedOffline ? "Profile saved offline." : "Profile saved.");
     });
@@ -1519,18 +1573,21 @@ useEffect(() => {
 
     try {
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      const loc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      await persistLastLocation(loc);
+      return loc;
     } catch {
       const last = await Location.getLastKnownPositionAsync();
       if (!last) throw new Error("Unable to read GPS location.");
-      return { latitude: last.coords.latitude, longitude: last.coords.longitude };
+      const loc = { latitude: last.coords.latitude, longitude: last.coords.longitude };
+      await persistLastLocation(loc);
+      return loc;
     }
   };
 
   const sendSos = () =>
     run(async () => {
       const loc = await getLocation();
-      setLastLoc(loc);
 
       const payload = {
         latitude: loc.latitude,
@@ -1547,7 +1604,7 @@ useEffect(() => {
             response?.warning || "Your emergency alert was processed.",
           );
           if (user) {
-            void startSosNotification(buildLockScreenPreview(user, profile));
+            void startSosNotification(buildLockScreenPreview(user, profile, contacts));
           } else {
             void startSosNotification();
           }
@@ -1563,7 +1620,7 @@ useEffect(() => {
       setPanicMsg("");
       await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
       if (user) {
-        void startSosNotification(buildLockScreenPreview(user, profile));
+        void startSosNotification(buildLockScreenPreview(user, profile, contacts));
       } else {
         void startSosNotification();
       }
@@ -1594,8 +1651,9 @@ useEffect(() => {
 
   const openScanner = () =>
     run(async () => {
-      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
-      if (!permission.granted) throw new Error("Camera permission is required.");
+      if (!cameraPermission?.granted) {
+        await requestCameraPermission();
+      }
       setScannerLocked(false);
       setShowPublicProfileModal(false);
       setShowScanner(true);
@@ -2084,46 +2142,32 @@ useEffect(() => {
                 </Pressable>
                 <Text style={s.authTitle}>Emergency QR Access</Text>
               </View>
-              {showScanner ? (
-                <View style={s.scannerWrap}>
-                  <CameraView style={s.scanner} onBarcodeScanned={onScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} />
-                </View>
-              ) : (
-                <>
-                  <Field
-                    icon="qr-code-outline"
-                    placeholder="Paste QR URL or token"
-                    value={publicInput}
-                    onChangeText={setPublicInput}
-                  />
-                  <Pressable
-                    style={s.primaryBtn}
-                    onPress={() =>
-                      run(async () => {
-                        await resolvePublic(publicInput);
-                        setOk("Emergency profile opened.");
-                      })
-                    }
-                  >
-                    <Text style={s.primaryBtnText}>{busy ? "Opening..." : "Open Emergency Profile"}</Text>
-                  </Pressable>
-                  <Pressable style={s.subtleBtn} onPress={openScanner}>
-                    <Text style={s.subtleBtnText}>Scan QR with Camera</Text>
-                  </Pressable>
-                  {publicData && (
-                    <View style={s.publicCard}>
-                      <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
-                      <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
-                      <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
-                      <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
-                      <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
-                      <Text style={s.publicLine}>Allergies: {publicData.medicalProfile?.allergies?.join(", ") || "None"}</Text>
-                      <Text style={s.publicLine}>Conditions: {publicData.medicalProfile?.chronicConditions?.join(", ") || "None"}</Text>
-                      <Text style={s.publicLine}>Disease Start Year: {publicData.medicalSummary?.diseaseStartingYear || "Not set"}</Text>
-                      <Text style={s.publicLine}>Contacts: {publicData.emergencyContacts?.length || 0}</Text>
-                    </View>
-                  )}
-                </>
+              <Field
+                icon="qr-code-outline"
+                placeholder="Paste QR URL or token"
+                value={publicInput}
+                onChangeText={setPublicInput}
+              />
+              <Pressable
+                style={s.primaryBtn}
+                onPress={() =>
+                  run(async () => {
+                    await resolvePublic(publicInput);
+                    setShowPublicProfileModal(true);
+                    setOk("Emergency profile opened.");
+                  })
+                }
+              >
+                <Text style={s.primaryBtnText}>{busy ? "Opening..." : "Open Emergency Profile"}</Text>
+              </Pressable>
+              <Pressable style={s.subtleBtn} onPress={openScanner}>
+                <Text style={s.subtleBtnText}>Scan QR with Camera</Text>
+              </Pressable>
+              {publicData && (
+                <Pressable style={s.publicPeekCard} onPress={() => setShowPublicProfileModal(true)}>
+                  <Text style={s.publicPeekTitle}>{publicData.user?.fullName || "Unknown User"}</Text>
+                  <Text style={s.publicPeekText}>Emergency profile loaded. Tap to view identity details, emergency profile, and contacts.</Text>
+                </Pressable>
               )}
             </View>
           )}
@@ -2791,6 +2835,50 @@ useEffect(() => {
       </KeyboardAvoidingView>
 
       <Modal
+        visible={showScanner}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setShowScanner(false);
+          setScannerLocked(false);
+        }}
+      >
+        <View style={s.publicModalBackdrop}>
+          <View style={s.publicModalCard}>
+            <View style={s.contactsHeader}>
+              <Text style={s.sectionCardTitle}>Scan Emergency QR</Text>
+              <Text
+                style={s.viewAll}
+                onPress={() => {
+                  setShowScanner(false);
+                  setScannerLocked(false);
+                }}
+              >
+                Close
+              </Text>
+            </View>
+            <View style={s.scannerWrap}>
+              {cameraPermission?.granted ? (
+                <CameraView
+                  style={s.scanner}
+                  onBarcodeScanned={scannerLocked ? undefined : onScanned}
+                  barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                />
+              ) : (
+                <View style={s.scannerFallback}>
+                  <Ionicons name="camera-outline" size={30} color="#6b7280" />
+                  <Text style={s.scannerFallbackText}>Camera access is required to scan another user's emergency QR.</Text>
+                  <Pressable style={s.subtleBtn} onPress={openScanner}>
+                    <Text style={s.subtleBtnText}>Grant Camera Access</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={showPublicProfileModal}
         animationType="slide"
         transparent
@@ -3018,6 +3106,18 @@ const s = StyleSheet.create({
 
   scannerWrap: { borderRadius: 16, overflow: "hidden" },
   scanner: { width: "100%", height: 380 },
+  scannerFallback: {
+    minHeight: 220,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 10,
+  },
+  scannerFallbackText: { color: "#4b5563", textAlign: "center" },
 
   publicCard: {
     borderWidth: 1,
