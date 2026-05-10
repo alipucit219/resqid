@@ -41,6 +41,3 @@ keys/
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android

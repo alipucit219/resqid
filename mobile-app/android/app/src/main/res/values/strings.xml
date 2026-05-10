@@ -1,0 +1,7 @@
+<resources>
+  <string name="app_name">mobile-app</string>
+  <string name="accessibility_service_label">ResQID Emergency SOS</string>
+  <string name="accessibility_service_description">Enable this service so a signed-in user can press Volume Up 3 times on the lock screen to send an emergency SOS alert.</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+</resources>
