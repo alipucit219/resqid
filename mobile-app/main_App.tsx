@@ -1,4 +1,4 @@
-import { StatusBar } from "expo-status-bar";
+﻿import { StatusBar } from "expo-status-bar";
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import {
@@ -7,7 +7,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   NativeModules,
   Platform,
   Pressable,
@@ -25,17 +24,6 @@ import * as SQLite from "expo-sqlite";
 import * as Clipboard from "expo-clipboard";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import notifee, {
-  AndroidCategory,
-  AndroidColor,
-  EventType,
-  AndroidForegroundServiceType,
-  AndroidImportance,
-  AndroidStyle,
-  AndroidVisibility,
-  AuthorizationStatus,
-} from 'react-native-notify-kit';
-import AccessibilityOnboarding from "./AccessibilityOnboarding";
 
 type AuthScreen = "login" | "register" | "forgot" | "verifyReset" | "reset" | "public";
 type Tab = "home" | "profile" | "summary" | "contacts";
@@ -91,33 +79,8 @@ type SummaryEntry = {
 type Summary = SummaryEntry;
 type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
 type Snapshot = { user: User; profile: Profile; summary: Summary; summaries: Summary[]; contacts: Contact[]; qr: QrData | null; savedAt: string };
-type PublicSectionItem = { label: string; value: unknown; type?: "text" | "number" | "list" };
-type PublicSection = { key: string; title: string; items: PublicSectionItem[] };
-type PublicQrProfile = { modalTitle?: string | null; modalSubtitle?: string | null; sections?: PublicSection[] };
-type PublicData = {
-  user: { fullName: string };
-  identityDetails?: Record<string, unknown>;
-  medicalProfile: Record<string, unknown>;
-  medicalSummary?: Record<string, unknown>;
-  emergencyContacts: Record<string, unknown>[];
-  profileHighlights?: Record<string, unknown>;
-  qrProfile?: PublicQrProfile;
-  generatedAt?: string | null;
-};
+type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
 type QueueRow = { id: number; kind: QueueKind; payload: string };
-type SosSetupStatus = {
-  notificationsAllowed: boolean | null;
-  batteryOptimizationEnabled: boolean | null;
-  powerManagerLabel: string;
-  powerManagerSupported: boolean;
-};
-type AccessibilityBridge = {
-  isAccessibilityServiceEnabled?: () => Promise<boolean>;
-  openAccessibilitySettings?: () => void;
-  syncSosConfig?: (apiBase: string, authToken: string) => void;
-  clearSosConfig?: () => void;
-  flushPendingSosQueue?: () => Promise<number>;
-};
 
 const normalizeApiBase = (value: string) => {
   const candidate = value.replace(/\/$/, "");
@@ -218,18 +181,6 @@ const GENDERS: Gender[] = ["male", "female", "other"];
 const STATUS_AUTO_HIDE_MS = 3500;
 const REQUEST_TIMEOUT_MS = 7000;
 const LOCK_CHANNEL_ID = "lockscreen-alert";
-const SOS_CHANNEL_ID = "sos_channel_lock_v2";
-const SOS_GUARD_NOTIFICATION_ID = "sos-guard";
-const accessibilityModule =
-  Platform.OS === "android"
-    ? (NativeModules.AccessibilityModule as AccessibilityBridge | undefined)
-    : undefined;
-const EMPTY_SOS_SETUP_STATUS: SosSetupStatus = {
-  notificationsAllowed: null,
-  batteryOptimizationEnabled: null,
-  powerManagerLabel: "Checking device settings...",
-  powerManagerSupported: false,
-};
 const EMPTY_REGISTER = {
   fullName: "",
   email: "",
@@ -335,14 +286,6 @@ const joinOrFallback = (items: string[], fallback = "None") => {
   const clean = items.map((item) => item.trim()).filter(Boolean);
   return clean.length ? clean.join(", ") : fallback;
 };
-const toTextValue = (value: unknown, fallback = "Not set") => {
-  const text = String(value ?? "").trim();
-  return text || fallback;
-};
-const toListValue = (value: unknown) =>
-  Array.isArray(value)
-    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
-    : [];
 const toNumericYear = (value: string) => {
   const year = Number(value);
   if (!Number.isInteger(year)) return null;
@@ -362,157 +305,6 @@ const toContactBody = (payload: any) => ({
   relationship: payload?.relationship ? String(payload.relationship).trim() : undefined,
   isPrimary: Boolean(payload?.isPrimary),
 });
-const buildIdentityDetails = (baseUser: User, medicalProfile: Profile) => ({
-  fullName: baseUser.fullName || "Unknown User",
-  email: baseUser.email || null,
-  phoneNumber: baseUser.phoneNumber || null,
-  cnic: medicalProfile.cnic || baseUser.cnic || null,
-  address: medicalProfile.address || baseUser.address || null,
-  dateOfBirth: medicalProfile.dateOfBirth || baseUser.dateOfBirth || null,
-  age: medicalProfile.age.trim() ? Number(medicalProfile.age.trim()) : null,
-  gender: medicalProfile.gender || baseUser.gender || null,
-});
-const buildProfileHighlights = (medicalProfile: Profile, medicalSummary: Summary, emergencyContacts: Contact[]) => {
-  const primaryEmergencyContact = emergencyContacts.find((contact) => contact.isPrimary) || emergencyContacts[0] || null;
-  return {
-    bloodGroup: medicalProfile.bloodGroup || null,
-    allergies: medicalProfile.allergies,
-    chronicConditions: medicalProfile.chronicConditions,
-    medications: medicalSummary.currentMedications.length ? medicalSummary.currentMedications : medicalProfile.medications,
-    emergencyNotes: medicalProfile.emergencyNotes || null,
-    treatmentStatus: medicalSummary.treatmentStatus || null,
-    primaryEmergencyContact: primaryEmergencyContact
-      ? {
-          name: primaryEmergencyContact.name,
-          phoneNumber: primaryEmergencyContact.phoneNumber,
-        }
-      : null,
-  };
-};
-const buildQrProfile = (
-  identityDetails: ReturnType<typeof buildIdentityDetails>,
-  medicalProfile: Profile,
-  profileHighlights: ReturnType<typeof buildProfileHighlights>,
-): PublicQrProfile => ({
-  modalTitle: `${identityDetails.fullName || "User"} Emergency Profile`,
-  modalSubtitle: "Identity details, emergency profile, and profile highlights for emergency responders.",
-  sections: [
-    {
-      key: "identity-details",
-      title: "Identity Details",
-      items: [
-        { label: "Full Name", value: identityDetails.fullName, type: "text" },
-        { label: "Email", value: identityDetails.email, type: "text" },
-        { label: "Phone Number", value: identityDetails.phoneNumber, type: "text" },
-        { label: "CNIC", value: identityDetails.cnic, type: "text" },
-        { label: "Address", value: identityDetails.address, type: "text" },
-        { label: "Date of Birth", value: identityDetails.dateOfBirth, type: "text" },
-        { label: "Age", value: identityDetails.age, type: "number" },
-        { label: "Gender", value: identityDetails.gender, type: "text" },
-      ],
-    },
-    {
-      key: "emergency-profile",
-      title: "Emergency Profile",
-      items: [
-        { label: "Blood Group", value: medicalProfile.bloodGroup, type: "text" },
-        { label: "Allergies", value: medicalProfile.allergies, type: "list" },
-        { label: "Chronic Conditions", value: medicalProfile.chronicConditions, type: "list" },
-        { label: "Medications", value: medicalProfile.medications, type: "list" },
-        { label: "Emergency Notes", value: medicalProfile.emergencyNotes, type: "text" },
-      ],
-    },
-    {
-      key: "profile-highlights",
-      title: "Profile Highlights",
-      items: [
-        { label: "Blood Group", value: profileHighlights.bloodGroup, type: "text" },
-        { label: "Allergies", value: profileHighlights.allergies, type: "list" },
-        { label: "Active Medications", value: profileHighlights.medications, type: "list" },
-        { label: "Treatment Status", value: profileHighlights.treatmentStatus, type: "text" },
-        {
-          label: "Primary Emergency Contact",
-          value: profileHighlights.primaryEmergencyContact
-            ? `${profileHighlights.primaryEmergencyContact.name} (${profileHighlights.primaryEmergencyContact.phoneNumber})`
-            : null,
-          type: "text",
-        },
-        { label: "Emergency Notes", value: profileHighlights.emergencyNotes, type: "text" },
-      ],
-    },
-  ],
-});
-const buildFallbackPublicSections = (data: PublicData): PublicSection[] => {
-  const identity = data.identityDetails || {};
-  const medicalProfile = data.medicalProfile || {};
-  const medicalSummary = data.medicalSummary || {};
-  const highlights = data.profileHighlights || {};
-
-  return [
-    {
-      key: "identity-details",
-      title: "Identity Details",
-      items: [
-        { label: "Full Name", value: identity.fullName || data.user?.fullName, type: "text" },
-        { label: "Email", value: identity.email, type: "text" },
-        { label: "Phone Number", value: identity.phoneNumber, type: "text" },
-        { label: "CNIC", value: identity.cnic || medicalProfile.cnic, type: "text" },
-        { label: "Address", value: identity.address || medicalProfile.address, type: "text" },
-        { label: "Date of Birth", value: identity.dateOfBirth, type: "text" },
-        { label: "Age", value: identity.age ?? medicalProfile.age, type: "number" },
-        { label: "Gender", value: identity.gender || medicalProfile.gender, type: "text" },
-      ],
-    },
-    {
-      key: "emergency-profile",
-      title: "Emergency Profile",
-      items: [
-        { label: "Blood Group", value: medicalProfile.bloodGroup, type: "text" },
-        { label: "Allergies", value: medicalProfile.allergies, type: "list" },
-        { label: "Chronic Conditions", value: medicalProfile.chronicConditions, type: "list" },
-        {
-          label: "Medications",
-          value: toListValue(medicalSummary.currentMedications).length ? medicalSummary.currentMedications : medicalProfile.medications,
-          type: "list",
-        },
-        { label: "Emergency Notes", value: medicalProfile.emergencyNotes, type: "text" },
-      ],
-    },
-    {
-      key: "profile-highlights",
-      title: "Profile Highlights",
-      items: [
-        { label: "Blood Group", value: highlights.bloodGroup || medicalProfile.bloodGroup, type: "text" },
-        { label: "Allergies", value: highlights.allergies || medicalProfile.allergies, type: "list" },
-        { label: "Active Medications", value: highlights.medications || medicalSummary.currentMedications || medicalProfile.medications, type: "list" },
-        { label: "Treatment Status", value: highlights.treatmentStatus || medicalSummary.treatmentStatus, type: "text" },
-        {
-          label: "Primary Emergency Contact",
-          value: highlights.primaryEmergencyContact
-            ? `${toTextValue((highlights.primaryEmergencyContact as Record<string, unknown>).name)} (${toTextValue((highlights.primaryEmergencyContact as Record<string, unknown>).phoneNumber)})`
-            : null,
-          type: "text",
-        },
-        { label: "Emergency Notes", value: highlights.emergencyNotes || medicalProfile.emergencyNotes, type: "text" },
-      ],
-    },
-  ];
-};
-const formatPublicSectionValue = (value: unknown, type?: PublicSectionItem["type"]) => {
-  if (type === "list") return joinOrFallback(toListValue(value));
-  return toTextValue(value);
-};
-const buildLockScreenPreview = (baseUser: User, medicalProfile: Profile) => {
-  const address = toTextValue(medicalProfile.address || baseUser.address, "Not set");
-  const bloodGroup = toTextValue(medicalProfile.bloodGroup, "Not set");
-  const allergies = joinOrFallback(medicalProfile.allergies);
-
-  return {
-    title: `${toTextValue(baseUser.fullName, "User")} Emergency Card`,
-    body: `Address: ${address} | Blood Group: ${bloodGroup} | Allergies: ${allergies}`,
-    expandedText: `Address: ${address}\nBlood Group: ${bloodGroup}\nAllergies: ${allergies}\nTriple-press Volume Up to send SOS.`,
-  };
-};
 
 async function api<T>(path: string, method: Method = "GET", token?: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
@@ -617,11 +409,6 @@ type FieldProps = {
   secureTextEntry?: boolean;
   keyboardType?: ComponentProps<typeof TextInput>["keyboardType"];
   autoCapitalize?: ComponentProps<typeof TextInput>["autoCapitalize"];
-  autoComplete?: ComponentProps<typeof TextInput>["autoComplete"];
-  textContentType?: ComponentProps<typeof TextInput>["textContentType"];
-  importantForAutofill?: ComponentProps<typeof TextInput>["importantForAutofill"];
-  returnKeyType?: ComponentProps<typeof TextInput>["returnKeyType"];
-  autoCorrect?: boolean;
   right?: ReactNode;
   multiline?: boolean;
 };
@@ -634,11 +421,6 @@ function Field({
   secureTextEntry,
   keyboardType,
   autoCapitalize = "none",
-  autoComplete,
-  textContentType,
-  importantForAutofill = "auto",
-  returnKeyType,
-  autoCorrect = false,
   right,
   multiline = false,
 }: FieldProps) {
@@ -654,78 +436,12 @@ function Field({
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
-        autoComplete={autoComplete}
-        textContentType={textContentType}
-        importantForAutofill={importantForAutofill}
-        returnKeyType={returnKeyType}
-        autoCorrect={autoCorrect}
-        disableFullscreenUI={Platform.OS === "android"}
         multiline={multiline}
       />
       {right}
     </View>
   );
 }
-
-async function startSosNotification(lockScreenPreview?: ReturnType<typeof buildLockScreenPreview>) {
-  await notifee.requestPermission();
-  await notifee.prewarmForegroundService().catch(() => undefined);
-
-  const channelId = await notifee.createChannel({
-    id: SOS_CHANNEL_ID,
-    name: 'SOS Alerts',
-    importance: AndroidImportance.HIGH,
-    visibility: AndroidVisibility.PUBLIC,
-    description: 'Persistent SOS controls visible from the lock screen.',
-  });
-
-  const notification = {
-    id: SOS_GUARD_NOTIFICATION_ID,
-    title: lockScreenPreview?.title || '🚨 ResQID SOS Ready',
-    body:
-      lockScreenPreview?.body ||
-      'Triple-press Volume Up to send an alert, or use the Accessibility button when it is available.',
-    android: {
-      channelId,
-      category: AndroidCategory.CALL,
-      color: AndroidColor.RED,
-      colorized: true,
-      ongoing: true,
-      autoCancel: false,
-      onlyAlertOnce: true,
-      lightUpScreen: true,
-      visibility: AndroidVisibility.PUBLIC,
-      pressAction: { id: 'open_emergency', launchActivity: 'default' },
-      style: {
-        type: AndroidStyle.BIGTEXT as AndroidStyle.BIGTEXT,
-        title: lockScreenPreview?.title || 'Lock-screen SOS controls stay active',
-        text:
-          lockScreenPreview?.expandedText ||
-          'Triple-press Volume Up to trigger SOS from the accessibility service, or tap here to open the in-app SOS screen.',
-      },
-      actions: [
-        {
-          title: 'Open SOS Screen',
-          pressAction: { id: 'open_emergency', launchActivity: 'default' },
-        },
-      ],
-    },
-  };
-
-  try {
-    await notifee.displayNotification({
-      ...notification,
-      android: {
-        ...notification.android,
-        asForegroundService: true,
-        foregroundServiceTypes: [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_LOCATION],
-      },
-    });
-  } catch {
-    await notifee.displayNotification(notification);
-  }
-}
-
 
 export default function App() {
   const [db, setDb] = useState<SQLite.SQLiteDatabase | null>(null);
@@ -786,14 +502,16 @@ export default function App() {
 
   const [publicInput, setPublicInput] = useState("");
   const [publicData, setPublicData] = useState<PublicData | null>(null);
-  const [showPublicProfileModal, setShowPublicProfileModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [pendingEmergencyLaunch, setPendingEmergencyLaunch] = useState(false);
-  const [sosSetupStatus, setSosSetupStatus] = useState<SosSetupStatus>(EMPTY_SOS_SETUP_STATUS);
-  const [accessibilityEnabled, setAccessibilityEnabled] = useState(Platform.OS !== "android");
-  const [checkingAccessibility, setCheckingAccessibility] = useState(Platform.OS === "android");
+  const [isLockEnabled, setIsLockEnabled] = useState(false);
+  const [lockPin, setLockPin] = useState("");
+  const [lockPinDraft, setLockPinDraft] = useState("");
+  const [lockPinConfirm, setLockPinConfirm] = useState("");
+  const [unlockPin, setUnlockPin] = useState("");
+  const [lockHint, setLockHint] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
 
   const syncing = useRef(false);
   const toastTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
@@ -860,71 +578,7 @@ export default function App() {
       trigger: null,
     });
   };
-  const refreshAccessibilityStatus = async () => {
-    if (Platform.OS !== "android") {
-      setAccessibilityEnabled(true);
-      setCheckingAccessibility(false);
-      return;
-    }
-
-    if (!accessibilityModule?.isAccessibilityServiceEnabled) {
-      setAccessibilityEnabled(false);
-      setCheckingAccessibility(false);
-      return;
-    }
-
-    setCheckingAccessibility(true);
-    try {
-      const enabled = await accessibilityModule.isAccessibilityServiceEnabled();
-      setAccessibilityEnabled(Boolean(enabled));
-    } catch {
-      setAccessibilityEnabled(false);
-    } finally {
-      setCheckingAccessibility(false);
-    }
-  };
   const getActiveSummaries = () => mergeSummaryDraft(summaries, summary);
-  const refreshSosSetupStatus = async () => {
-    if (Platform.OS !== "android") {
-      setSosSetupStatus({
-        notificationsAllowed: true,
-        batteryOptimizationEnabled: null,
-        powerManagerLabel: "Android-specific SOS setup is not needed on this device.",
-        powerManagerSupported: false,
-      });
-      return;
-    }
-
-    const [notificationSettings, batteryOptimizationEnabled, powerManagerInfo] = await Promise.all([
-      notifee.getNotificationSettings(),
-      notifee.isBatteryOptimizationEnabled().catch(() => null),
-      notifee.getPowerManagerInfo().catch(() => ({ manufacturer: "", activity: null })),
-    ]);
-
-    const notificationsAllowed =
-      notificationSettings.authorizationStatus === AuthorizationStatus.AUTHORIZED ||
-      notificationSettings.authorizationStatus === AuthorizationStatus.PROVISIONAL;
-    const manufacturer = String(powerManagerInfo?.manufacturer || "").trim();
-    const powerManagerSupported = Boolean(powerManagerInfo?.activity);
-    const powerManagerLabel = powerManagerSupported
-      ? `${manufacturer || "Your device"} has extra background restrictions. Open power settings and allow this app to run in background / autostart.`
-      : "No vendor-specific power-manager shortcut was found on this device.";
-
-    setSosSetupStatus({
-      notificationsAllowed,
-      batteryOptimizationEnabled,
-      powerManagerLabel,
-      powerManagerSupported,
-    });
-  };
-  const activateEmergencyLaunch = (pressId?: string | null) => {
-    const actionId = String(pressId || "").trim();
-    if (actionId === "open_emergency") {
-      setPendingEmergencyLaunch(true);
-      return true;
-    }
-    return false;
-  };
   const clearSummaryDraft = () => {
     setSummary({ ...EMPTY_SUMMARY, id: safeId() });
     setSmDraft("");
@@ -981,42 +635,34 @@ export default function App() {
   const toPublic = (snap: Snapshot): PublicData => {
     const visibleSummaries = snap.summaries?.length ? snap.summaries : hasSummaryContent(snap.summary) ? [snap.summary] : [];
     const primarySummary = visibleSummaries[0] || snap.summary;
-    const identityDetails = buildIdentityDetails(snap.user, snap.profile);
-    const profileHighlights = buildProfileHighlights(snap.profile, primarySummary, snap.contacts);
     return {
-      user: { fullName: snap.user.fullName },
-      identityDetails,
-      medicalProfile: {
-        bloodGroup: snap.profile.bloodGroup || null,
-        cnic: snap.profile.cnic || null,
-        age: snap.profile.age ? Number(snap.profile.age) : null,
-        address: snap.profile.address || null,
-        allergies: snap.profile.allergies,
-        chronicConditions: snap.profile.chronicConditions,
-        medications: snap.profile.medications,
-        emergencyNotes: snap.profile.emergencyNotes || null,
-        dateOfBirth: snap.profile.dateOfBirth || null,
-        gender: snap.profile.gender || null,
-      },
-      medicalSummary: {
-        hospitalName: primarySummary?.hospitalName || null,
-        doctorName: primarySummary?.doctorName || null,
-        diseaseStartingYear: primarySummary?.diseaseStartingYear ? Number(primarySummary.diseaseStartingYear) : null,
-        treatmentStatus: primarySummary?.treatmentStatus || null,
-        checkupFiles: primarySummary?.checkupFiles || [],
-        currentMedications: primarySummary?.currentMedications || [],
-        entries: visibleSummaries,
-      },
-      emergencyContacts: snap.contacts.map((c) => ({
-        name: c.name,
-        phoneNumber: c.phoneNumber,
-        email: c.email || null,
-        relationship: c.relationship || null,
-        isPrimary: !!c.isPrimary,
-      })),
-      profileHighlights,
-      qrProfile: buildQrProfile(identityDetails, snap.profile, profileHighlights),
-      generatedAt: snap.savedAt,
+    user: { fullName: snap.user.fullName },
+    medicalProfile: {
+      bloodGroup: snap.profile.bloodGroup || null,
+      cnic: snap.profile.cnic || null,
+      age: snap.profile.age ? Number(snap.profile.age) : null,
+      address: snap.profile.address || null,
+      allergies: snap.profile.allergies,
+      chronicConditions: snap.profile.chronicConditions,
+      medications: snap.profile.medications,
+      emergencyNotes: snap.profile.emergencyNotes || null,
+    },
+    medicalSummary: {
+      hospitalName: primarySummary?.hospitalName || null,
+      doctorName: primarySummary?.doctorName || null,
+      diseaseStartingYear: primarySummary?.diseaseStartingYear ? Number(primarySummary.diseaseStartingYear) : null,
+      treatmentStatus: primarySummary?.treatmentStatus || null,
+      checkupFiles: primarySummary?.checkupFiles || [],
+      currentMedications: primarySummary?.currentMedications || [],
+      entries: visibleSummaries,
+    },
+    emergencyContacts: snap.contacts.map((c) => ({
+      name: c.name,
+      phoneNumber: c.phoneNumber,
+      email: c.email || null,
+      relationship: c.relationship || null,
+      isPrimary: !!c.isPrimary,
+    })),
     };
   };
 
@@ -1028,27 +674,28 @@ export default function App() {
     ]);
 
     const activeUser = currentUser || user;
-    const nextProfile: Profile = profileRes
-      ? {
-          bloodGroup: profileRes.bloodGroup || "",
-          cnic: profileRes.cnic || activeUser?.cnic || "",
-          age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
-          address: profileRes.address || activeUser?.address || "",
-          allergies: arr(profileRes.allergies),
-          chronicConditions: arr(profileRes.chronicConditions),
-          medications: arr(profileRes.medications),
-          emergencyNotes: profileRes.emergencyNotes || "",
-          dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
-          gender: profileRes.gender || activeUser?.gender || "",
-        }
-      : {
-          ...EMPTY_PROFILE,
-          cnic: activeUser?.cnic || "",
-          address: activeUser?.address || "",
-          dateOfBirth: asDate(activeUser?.dateOfBirth),
-          gender: activeUser?.gender || "",
-        };
-    setProfile(nextProfile);
+    setProfile(
+      profileRes
+        ? {
+            bloodGroup: profileRes.bloodGroup || "",
+            cnic: profileRes.cnic || activeUser?.cnic || "",
+            age: profileRes.age !== undefined && profileRes.age !== null ? String(profileRes.age) : "",
+            address: profileRes.address || activeUser?.address || "",
+            allergies: arr(profileRes.allergies),
+            chronicConditions: arr(profileRes.chronicConditions),
+            medications: arr(profileRes.medications),
+            emergencyNotes: profileRes.emergencyNotes || "",
+            dateOfBirth: asDate(profileRes.dateOfBirth) || asDate(activeUser?.dateOfBirth),
+            gender: profileRes.gender || activeUser?.gender || "",
+          }
+        : {
+            ...EMPTY_PROFILE,
+            cnic: activeUser?.cnic || "",
+            address: activeUser?.address || "",
+            dateOfBirth: asDate(activeUser?.dateOfBirth),
+            gender: activeUser?.gender || "",
+          },
+    );
 
     const nextSummaries = summaryRes?.entries?.length
       ? sortSummaryEntries(
@@ -1077,9 +724,6 @@ export default function App() {
     }
 
     if (!silent) setOk("Cloud data loaded.");
-    if (activeUser) {
-      void startSosNotification(buildLockScreenPreview(activeUser, nextProfile));
-    }
   };
 
   const syncQ = async () => {
@@ -1148,10 +792,14 @@ export default function App() {
       const cachedSnapshot = await getKV<Snapshot>(localDb, "snapshot");
       const cachedToken = await getKV<string>(localDb, "auth_token");
       const cachedUser = await getKV<User>(localDb, "auth_user");
+      const cachedLockSettings = await getKV<{ isLockEnabled: boolean; lockPin: string }>(localDb, "lock_settings");
       if (!active) return;
 
       setSnapshot(cachedSnapshot);
-      void delKV(localDb, "lock_settings");
+      if (cachedLockSettings) {
+        setIsLockEnabled(Boolean(cachedLockSettings.isLockEnabled));
+        setLockPin(String(cachedLockSettings.lockPin || ""));
+      }
       if (cachedToken && cachedUser) {
         setToken(cachedToken);
         setUser(cachedUser);
@@ -1180,46 +828,13 @@ export default function App() {
   useEffect(() => {
     if (!ready || !token || !user) return;
     void hydrate(token, user, true);
-    void refreshSosSetupStatus();
   }, [ready, token, user?.id]);
 
   useEffect(() => {
-    void refreshAccessibilityStatus();
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    void notifee.getInitialNotification().then((initial) => {
-      if (!active) return;
-      const pressId =
-        initial?.pressAction?.id ||
-        initial?.notification?.android?.pressAction?.id ||
-        "";
-      activateEmergencyLaunch(pressId);
-    });
-
-    const unsubscribe = notifee.onForegroundEvent(({ type, detail }) => {
-      if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
-      const pressId =
-        detail.pressAction?.id ||
-        detail.notification?.android?.pressAction?.id ||
-        "";
-      activateEmergencyLaunch(pressId);
-    });
-
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!pendingEmergencyLaunch || !ready || !token || !user) return;
-    setTab("home");
-    setShowSos(true);
-    setPendingEmergencyLaunch(false);
-  }, [pendingEmergencyLaunch, ready, token, user]);
+    if (ready && token && user && isLockEnabled && lockPin) {
+      setIsLocked(true);
+    }
+  }, [ready, token, user, isLockEnabled, lockPin]);
 
   useEffect(
     () => () => {
@@ -1261,34 +876,20 @@ export default function App() {
   }, [db, user, profile, summary, summaries, contacts, qr]);
 
   useEffect(() => {
+    if (!db) return;
+    void setKV(db, "lock_settings", { isLockEnabled, lockPin });
+  }, [db, isLockEnabled, lockPin]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") {
-        setPendingEmergencyLaunch(false);
-        return;
+      if (state !== "active" && isLockEnabled && Boolean(token) && Boolean(user) && lockPin) {
+        setIsLocked(true);
       }
-      void refreshAccessibilityStatus();
     });
     return () => {
       subscription.remove();
     };
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-
-    if (!token || !user) {
-      accessibilityModule?.clearSosConfig?.();
-      return;
-    }
-
-    accessibilityModule?.syncSosConfig?.(ACTIVE_API, token);
-    if (isOnline) {
-      const flushPromise = accessibilityModule?.flushPendingSosQueue?.();
-      if (flushPromise) {
-        void flushPromise.catch(() => undefined);
-      }
-    }
-  }, [token, user?.id, isOnline]);
+  }, [isLockEnabled, token, user, lockPin]);
 
   const loginUser = () =>
     run(async () => {
@@ -1309,6 +910,9 @@ export default function App() {
       setUser(response.user);
       setLoginErrors({});
       setTab("home");
+      if (isLockEnabled && lockPin) {
+        setIsLocked(true);
+      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Signed in.");
     });
@@ -1356,6 +960,9 @@ export default function App() {
       setLogin({ email: payload.email, password: payload.password });
       setTab("home");
       resetRegisterForm();
+      if (isLockEnabled && lockPin) {
+        setIsLocked(true);
+      }
       await hydrate(response.accessToken, response.user);
       setOk(response.message || "Account created.");
     });
@@ -1519,9 +1126,6 @@ export default function App() {
     run(async () => {
       const [profileMsg, summaryMsg] = await Promise.all([saveProfileCore(), saveSummaryCore()]);
       const savedOffline = /offline/i.test(profileMsg) || /offline/i.test(summaryMsg);
-      if (user) {
-        void startSosNotification(buildLockScreenPreview(user, profile));
-      }
       setOk(savedOffline ? "Profile saved offline." : "Profile saved.");
     });
 
@@ -1621,47 +1225,37 @@ export default function App() {
     }
   };
 
-  const sendSosCore = async (closeSheet = true) => {
-    const loc = await getLocation();
-    setLastLoc(loc);
-
-    const payload = {
-      latitude: loc.latitude,
-      longitude: loc.longitude,
-      message: panicMsg.trim() || undefined,
-    };
-    if (isOnline) {
-      try {
-        const response = await api<{ warning?: string }>("/me/panic-alerts", "POST", token, payload);
-        if (closeSheet) setShowSos(false);
-        setPanicMsg("");
-        await scheduleAlertNotification(
-          "ResQID emergency alert",
-          response?.warning || "Your emergency alert was processed.",
-        );
-        void startSosNotification();
-        setOk(response?.warning || "Emergency alert sent.");
-        return;
-      } catch (e) {
-        if (!netErr(e)) throw e;
-      }
-    }
-
-    await queue("panic_alert", payload);
-    if (closeSheet) setShowSos(false);
-    setPanicMsg("");
-    await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
-    if (user) {
-      void startSosNotification(buildLockScreenPreview(user, profile));
-    } else {
-      void startSosNotification();
-    }
-    setInfo("SOS queued offline and will sync automatically.");
-  };
-
   const sendSos = () =>
     run(async () => {
-      await sendSosCore(true);
+      const loc = await getLocation();
+      setLastLoc(loc);
+
+      const payload = {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        message: panicMsg.trim() || undefined,
+      };
+      if (isOnline) {
+        try {
+          const response = await api<{ warning?: string }>("/me/panic-alerts", "POST", token, payload);
+          setShowSos(false);
+          setPanicMsg("");
+          await scheduleAlertNotification(
+            "ResQID emergency alert",
+            response?.warning || "Your emergency alert was processed.",
+          );
+          setOk(response?.warning || "Emergency alert sent.");
+          return;
+        } catch (e) {
+          if (!netErr(e)) throw e;
+        }
+      }
+
+      await queue("panic_alert", payload);
+      setShowSos(false);
+      setPanicMsg("");
+      await scheduleAlertNotification("ResQID alert queued", "Your SOS alert was saved offline and will sync automatically.");
+      setInfo("SOS queued offline and will sync automatically.");
     });
 
   const regenQr = () =>
@@ -1676,27 +1270,6 @@ export default function App() {
       if (!emergencyUrl) throw new Error("No emergency URL available yet.");
       await Clipboard.setStringAsync(emergencyUrl);
       setOk("Emergency URL copied.");
-    });
-  const openNotificationSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      await notifee.openNotificationSettings(SOS_CHANNEL_ID);
-    });
-  const openAccessibilitySettingsScreen = () => {
-    accessibilityModule?.openAccessibilitySettings?.();
-  };
-  const openBatteryOptimizationSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      await notifee.openBatteryOptimizationSettings();
-    });
-  const openPowerManagerSettingsScreen = () =>
-    run(async () => {
-      if (Platform.OS !== "android") throw new Error("This settings shortcut is for Android devices.");
-      if (!sosSetupStatus.powerManagerSupported) {
-        throw new Error("No vendor-specific power-manager settings shortcut is available on this device.");
-      }
-      await notifee.openPowerManagerSettings();
     });
   const openEmergencyUrl = () =>
     run(async () => {
@@ -1720,15 +1293,12 @@ export default function App() {
     if (!emergencyToken) throw new Error("Provide a valid token or URL.");
 
     if (isOnline) {
-      const data = await api<PublicData>(`/emergency-access/${emergencyToken}/data`);
-      setPublicData(data);
-      setShowPublicProfileModal(true);
+      setPublicData(await api<PublicData>(`/emergency-access/${emergencyToken}/data`));
       return;
     }
 
     if (snapshot?.qr?.emergencyUrl && tokenFrom(snapshot.qr.emergencyUrl) === emergencyToken) {
       setPublicData(toPublic(snapshot));
-      setShowPublicProfileModal(true);
       return;
     }
 
@@ -1905,6 +1475,51 @@ export default function App() {
     }));
   };
 
+  const enableLock = () => {
+    const pin = lockPinDraft.trim();
+    const confirm = lockPinConfirm.trim();
+    if (!/^\d{4}$/.test(pin)) {
+      setLockHint("PIN must be exactly 4 digits.");
+      return;
+    }
+    if (pin !== confirm) {
+      setLockHint("PIN and confirmation do not match.");
+      return;
+    }
+    setLockPin(pin);
+    setIsLockEnabled(true);
+    setLockPinDraft("");
+    setLockPinConfirm("");
+    setUnlockPin("");
+    setLockHint("2-step lock enabled.");
+    setOk("2-step lock enabled.");
+  };
+
+  const disableLock = () => {
+    setIsLockEnabled(false);
+    setLockPin("");
+    setLockPinDraft("");
+    setLockPinConfirm("");
+    setUnlockPin("");
+    setIsLocked(false);
+    setLockHint("2-step lock disabled.");
+    setInfo("2-step lock disabled.");
+  };
+
+  const unlockApp = () => {
+    if (!isLockEnabled) {
+      setIsLocked(false);
+      return;
+    }
+    if (unlockPin.trim() !== lockPin) {
+      setLockHint("Incorrect PIN. Please try again.");
+      return;
+    }
+    setUnlockPin("");
+    setIsLocked(false);
+    setLockHint("");
+  };
+
   const openContactEditor = (contact?: Contact) => {
     if (!contact) {
       setContactForm({ id: "", name: "", phoneNumber: "", email: "", relationship: "", isPrimary: false });
@@ -1925,98 +1540,25 @@ export default function App() {
   };
 
   const logout = () => {
-    void notifee.stopForegroundService();
-    void notifee.cancelNotification(SOS_GUARD_NOTIFICATION_ID).catch(() => undefined);
     setToken("");
     setUser(null);
     setContacts([]);
     setQr(null);
     setShowScanner(false);
     setPublicData(null);
-    setShowPublicProfileModal(false);
     setPublicInput("");
     setProfile(EMPTY_PROFILE);
     setSummary({ ...EMPTY_SUMMARY, id: safeId() });
     setSummaries([]);
     setAuthScreen("login");
     setTab("home");
-    setPendingEmergencyLaunch(false);
-    setShowSos(false);
+    setIsLocked(false);
+    setUnlockPin("");
     setInfo("Logged out.");
   };
 
   const visibleEmergencyUrl = normalizeEmergencyUrl(qr?.emergencyUrl);
   const isEditingSummaryEntry = summaries.some((item) => item.id === summary.id);
-  const publicProfileTitle = publicData?.qrProfile?.modalTitle || `${toTextValue(publicData?.user?.fullName, "User")} Emergency Profile`;
-  const publicProfileSubtitle =
-    publicData?.qrProfile?.modalSubtitle ||
-    "Identity details, emergency profile, and profile highlights for emergency responders.";
-  const publicProfileSections = publicData
-    ? publicData.qrProfile?.sections?.length
-      ? publicData.qrProfile.sections
-      : buildFallbackPublicSections(publicData)
-    : [];
-  const publicContacts = Array.isArray(publicData?.emergencyContacts) ? publicData.emergencyContacts : [];
-  const renderPublicProfileModal = () => {
-    if (!publicData) return null;
-
-    return (
-      <Modal
-        visible={showPublicProfileModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowPublicProfileModal(false)}
-      >
-        <View style={s.publicModalOverlay}>
-          <View style={s.publicModalCard}>
-            <View style={s.publicModalTop}>
-              <View style={s.publicModalBadge}>
-                <Text style={s.publicModalBadgeText}>Emergency QR Profile</Text>
-              </View>
-              <Pressable style={s.publicModalClose} onPress={() => setShowPublicProfileModal(false)}>
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </Pressable>
-            </View>
-            <ScrollView
-              contentContainerStyle={s.publicModalScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={s.publicModalTitle}>{publicProfileTitle}</Text>
-              <Text style={s.publicModalSubtitle}>{publicProfileSubtitle}</Text>
-
-              {publicProfileSections.map((section) => (
-                <View key={section.key} style={s.publicModalSection}>
-                  <Text style={s.publicModalSectionTitle}>{section.title}</Text>
-                  {section.items.map((item) => (
-                    <View key={`${section.key}-${item.label}`} style={s.publicModalLineRow}>
-                      <Text style={s.publicModalLineLabel}>{item.label}</Text>
-                      <Text style={s.publicModalLineValue}>{formatPublicSectionValue(item.value, item.type)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
-
-              <View style={s.publicModalSection}>
-                <Text style={s.publicModalSectionTitle}>Emergency Contacts</Text>
-                {publicContacts.length ? (
-                  publicContacts.map((contact, index) => (
-                    <View key={`${toTextValue(contact.name, "contact")}-${index}`} style={s.publicContactCard}>
-                      <Text style={s.publicContactName}>{toTextValue(contact.name, "Unknown contact")}</Text>
-                      <Text style={s.publicContactLine}>{toTextValue(contact.phoneNumber)}</Text>
-                      <Text style={s.publicContactLine}>{toTextValue(contact.relationship, "No relationship")}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={s.publicModalEmpty}>No emergency contacts available.</Text>
-                )}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
 
   if (!ready) {
     return (
@@ -2033,30 +1575,11 @@ export default function App() {
     );
   }
 
-  if (Platform.OS === "android" && checkingAccessibility) {
-    return (
-      <SafeAreaView style={s.root}>
-        <StatusBar style="dark" />
-        <View style={s.bootWrap}>
-          <View style={s.logoSquare}>
-            <Ionicons name="shield-checkmark-outline" size={36} color="#fff" />
-          </View>
-          <Text style={s.bootTitle}>ResQID</Text>
-          <Text style={s.bootSub}>Checking SOS accessibility setup...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (Platform.OS === "android" && !accessibilityEnabled) {
-    return <AccessibilityOnboarding onEnabled={() => setAccessibilityEnabled(true)} />;
-  }
-
   if (!token || !user) {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="dark" />
-        <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={s.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
           <View style={s.logoBlock}>
             <View style={s.logoSquare}>
@@ -2078,10 +1601,6 @@ export default function App() {
                   setLoginErrors((p) => ({ ...p, email: undefined }));
                 }}
                 keyboardType="email-address"
-                autoComplete="email"
-                textContentType="username"
-                importantForAutofill="yes"
-                returnKeyType="next"
               />
               {!!loginErrors.email && <Text style={s.fieldError}>{loginErrors.email}</Text>}
               <Text style={s.formLabel}>Password</Text>
@@ -2094,10 +1613,6 @@ export default function App() {
                   setLoginErrors((p) => ({ ...p, password: undefined }));
                 }}
                 secureTextEntry={!showLoginPassword}
-                autoComplete="password"
-                textContentType="password"
-                importantForAutofill="yes"
-                returnKeyType="done"
                 right={
                   <Pressable onPress={() => setShowLoginPassword((v) => !v)}>
                     <Ionicons
@@ -2152,9 +1667,6 @@ export default function App() {
                   setRegisterErrors((p) => ({ ...p, fullName: undefined }));
                 }}
                 autoCapitalize="words"
-                autoComplete="name"
-                textContentType="name"
-                importantForAutofill="yes"
               />
               {!!registerErrors.fullName && <Text style={s.fieldError}>{registerErrors.fullName}</Text>}
               <Text style={s.formLabel}>Email</Text>
@@ -2167,9 +1679,6 @@ export default function App() {
                   setRegisterErrors((p) => ({ ...p, email: undefined }));
                 }}
                 keyboardType="email-address"
-                autoComplete="email"
-                textContentType="emailAddress"
-                importantForAutofill="yes"
               />
               {!!registerErrors.email && <Text style={s.fieldError}>{registerErrors.email}</Text>}
               <Text style={s.formLabel}>Phone Number</Text>
@@ -2182,9 +1691,6 @@ export default function App() {
                   setRegisterErrors((p) => ({ ...p, phoneNumber: undefined }));
                 }}
                 keyboardType="phone-pad"
-                autoComplete="tel"
-                textContentType="telephoneNumber"
-                importantForAutofill="yes"
               />
               {!!registerErrors.phoneNumber && <Text style={s.fieldError}>{registerErrors.phoneNumber}</Text>}
               <Text style={s.formLabel}>CNIC</Text>
@@ -2266,9 +1772,6 @@ export default function App() {
                   setRegisterErrors((p) => ({ ...p, password: undefined }));
                 }}
                 secureTextEntry={!showRegPassword}
-                autoComplete="new-password"
-                textContentType="newPassword"
-                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowRegPassword((v) => !v)}>
                     <Ionicons
@@ -2290,9 +1793,6 @@ export default function App() {
                   setRegisterErrors((p) => ({ ...p, confirmPassword: undefined }));
                 }}
                 secureTextEntry={!showRegConfirm}
-                autoComplete="new-password"
-                textContentType="newPassword"
-                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowRegConfirm((v) => !v)}>
                     <Ionicons
@@ -2336,9 +1836,6 @@ export default function App() {
                   setForgotEmailError("");
                 }}
                 keyboardType="email-address"
-                autoComplete="email"
-                textContentType="emailAddress"
-                importantForAutofill="yes"
               />
               {!!forgotEmailError && <Text style={s.fieldError}>{forgotEmailError}</Text>}
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
@@ -2393,9 +1890,6 @@ export default function App() {
                 value={resetPassword}
                 onChangeText={setResetPassword}
                 secureTextEntry={!showResetPassword}
-                autoComplete="new-password"
-                textContentType="newPassword"
-                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowResetPassword((v) => !v)}>
                     <Ionicons
@@ -2413,9 +1907,6 @@ export default function App() {
                 value={resetConfirmPassword}
                 onChangeText={setResetConfirmPassword}
                 secureTextEntry={!showResetConfirmPassword}
-                autoComplete="new-password"
-                textContentType="newPassword"
-                importantForAutofill="yes"
                 right={
                   <Pressable onPress={() => setShowResetConfirmPassword((v) => !v)}>
                     <Ionicons
@@ -2481,10 +1972,17 @@ export default function App() {
                     <Text style={s.subtleBtnText}>Scan QR with Camera</Text>
                   </Pressable>
                   {publicData && (
-                    <Pressable style={s.publicPeekCard} onPress={() => setShowPublicProfileModal(true)}>
-                      <Text style={s.publicPeekTitle}>{publicData.user?.fullName || "Unknown User"}</Text>
-                      <Text style={s.publicPeekText}>Emergency profile loaded. Tap to view identity details, emergency profile, highlights, and contacts.</Text>
-                    </Pressable>
+                    <View style={s.publicCard}>
+                      <Text style={s.publicName}>{publicData.user?.fullName || "Unknown User"}</Text>
+                      <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
+                      <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
+                      <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
+                      <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
+                      <Text style={s.publicLine}>Allergies: {publicData.medicalProfile?.allergies?.join(", ") || "None"}</Text>
+                      <Text style={s.publicLine}>Conditions: {publicData.medicalProfile?.chronicConditions?.join(", ") || "None"}</Text>
+                      <Text style={s.publicLine}>Disease Start Year: {publicData.medicalSummary?.diseaseStartingYear || "Not set"}</Text>
+                      <Text style={s.publicLine}>Contacts: {publicData.emergencyContacts?.length || 0}</Text>
+                    </View>
                   )}
                 </>
               )}
@@ -2494,7 +1992,6 @@ export default function App() {
           <Text style={s.apiHint}>API: {API}</Text>
           </ScrollView>
         </KeyboardAvoidingView>
-        {renderPublicProfileModal()}
         <View pointerEvents="box-none" style={s.toastWrap}>
           {toasts.map((toast) => (
             <Pressable
@@ -2520,7 +2017,7 @@ export default function App() {
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         style={s.root}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 22}
       >
       <ScrollView
@@ -2551,10 +2048,13 @@ export default function App() {
             <Text style={s.homeSub}>Your emergency profile is ready</Text>
 
             {publicData && (
-              <Pressable style={s.publicPeekCard} onPress={() => setShowPublicProfileModal(true)}>
-                <Text style={s.publicPeekTitle}>{publicData.user?.fullName || "Scanned User"}</Text>
-                <Text style={s.publicPeekText}>Emergency QR opened. Tap to review identity details, emergency profile, highlights, and contacts.</Text>
-              </Pressable>
+              <View style={s.publicCard}>
+                <Text style={s.publicName}>{publicData.user?.fullName || "Scanned User"}</Text>
+                <Text style={s.publicLine}>Blood Group: {publicData.medicalProfile?.bloodGroup || "Not set"}</Text>
+                <Text style={s.publicLine}>CNIC: {publicData.medicalProfile?.cnic || "Not set"}</Text>
+                <Text style={s.publicLine}>Age: {publicData.medicalProfile?.age || "Not set"}</Text>
+                <Text style={s.publicLine}>Address: {publicData.medicalProfile?.address || "Not set"}</Text>
+              </View>
             )}
 
             <View style={s.statGrid}>
@@ -2626,7 +2126,7 @@ export default function App() {
                     <Text style={s.qrPlaceholder}>No QR generated yet</Text>
                   )}
                 </View>
-                <Text style={s.qrHint}>Scan this QR code to view emergency medical inf mkmk ormation</Text>
+                <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
                 <View style={s.urlCard}>
                   <Text style={s.urlLabel}>Emergency URL</Text>
                   <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
@@ -2660,8 +2160,6 @@ export default function App() {
                 <Text style={s.identityLine}>Gender: {profile.gender || user?.gender || "Not set"}</Text>
               </View>
             )}
-
-           
 
             <View style={s.contactsHeader}>
               <Text style={s.sectionTitle}>Emergency Contacts</Text>
@@ -2871,6 +2369,47 @@ export default function App() {
               )}
               <Text style={s.formLabel}>Emergency Notes</Text>
               <TextInput style={s.textArea} multiline value={profile.emergencyNotes} onChangeText={(v) => setProfile((p) => ({ ...p, emergencyNotes: v }))} placeholder="Add emergency notes" />
+            </View>
+
+            <View style={[s.sectionCard, s.sectionCardSoft]}>
+              <Text style={s.sectionCardTitle}>Security</Text>
+              <Text style={s.sectionHint}>Enable local 2-step PIN lock for app and lock-screen mode.</Text>
+              {isLockEnabled ? (
+                <>
+                  <Text style={s.securityInfo}>2-step lock is enabled on this device.</Text>
+                  <View style={s.summaryRow}>
+                    <Pressable style={[s.primaryBtn, s.flexOne]} onPress={() => setIsLocked(true)}>
+                      <Text style={s.primaryBtnText}>Lock Now</Text>
+                    </Pressable>
+                    <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={disableLock}>
+                      <Text style={s.subtleBtnText}>Disable</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    style={s.inlineInput}
+                    placeholder="Set 4-digit PIN"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    value={lockPinDraft}
+                    onChangeText={(v) => setLockPinDraft(v.replace(/[^0-9]/g, "").slice(0, 4))}
+                  />
+                  <TextInput
+                    style={s.inlineInput}
+                    placeholder="Confirm PIN"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    value={lockPinConfirm}
+                    onChangeText={(v) => setLockPinConfirm(v.replace(/[^0-9]/g, "").slice(0, 4))}
+                  />
+                  <Pressable style={s.primaryBtn} onPress={enableLock}>
+                    <Text style={s.primaryBtnText}>Enable 2-Step Lock</Text>
+                  </Pressable>
+                </>
+              )}
+              {!!lockHint && <Text style={s.sectionHint}>{lockHint}</Text>}
             </View>
 
             <View style={[s.sectionCard, s.sectionCardSoft]}>
@@ -3113,7 +2652,28 @@ export default function App() {
           </View>
         </View>
       )}
-      {renderPublicProfileModal()}
+      {isLocked && (
+        <View style={s.lockOverlay}>
+          <View style={s.lockCard}>
+            <Ionicons name="lock-closed-outline" size={42} color="#b91c1c" />
+            <Text style={s.lockTitle}>Lock Screen Enabled</Text>
+            <Text style={s.lockSub}>Enter your 4-digit PIN to continue.</Text>
+            <TextInput
+              style={s.lockInput}
+              keyboardType="number-pad"
+              secureTextEntry
+              value={unlockPin}
+              onChangeText={(v) => setUnlockPin(v.replace(/[^0-9]/g, "").slice(0, 4))}
+              placeholder="PIN"
+              placeholderTextColor="#9ca3af"
+            />
+            {!!lockHint && <Text style={s.fieldError}>{lockHint}</Text>}
+            <Pressable style={s.primaryBtn} onPress={unlockApp}>
+              <Text style={s.primaryBtnText}>Unlock</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <View pointerEvents="box-none" style={s.toastWrap}>
         {toasts.map((toast) => (
           <Pressable
@@ -3250,82 +2810,6 @@ const s = StyleSheet.create({
   },
   publicName: { fontSize: 22, fontWeight: "800", color: "#111827" },
   publicLine: { color: "#374151" },
-  publicPeekCard: {
-    borderWidth: 1,
-    borderColor: "#fecaca",
-    borderRadius: 18,
-    backgroundColor: "#fff7f7",
-    padding: 14,
-    marginTop: 10,
-    gap: 6,
-  },
-  publicPeekTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
-  publicPeekText: { color: "#475569", lineHeight: 20 },
-  publicModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.52)",
-    justifyContent: "flex-end",
-  },
-  publicModalCard: {
-    maxHeight: "90%",
-    backgroundColor: "#fffaf8",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
-    borderColor: "#fed7d7",
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 28,
-  },
-  publicModalTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-  publicModalBadge: {
-    backgroundColor: "#fee2e2",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  publicModalBadgeText: { color: "#b91c1c", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  publicModalClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  publicModalScroll: { gap: 12, paddingBottom: 22 },
-  publicModalTitle: { fontSize: 28, fontWeight: "800", color: "#111827" },
-  publicModalSubtitle: { color: "#6b7280", lineHeight: 20, marginBottom: 4 },
-  publicModalSection: {
-    borderWidth: 1,
-    borderColor: "#f3d7d9",
-    borderRadius: 20,
-    backgroundColor: "#fff",
-    padding: 14,
-    gap: 10,
-  },
-  publicModalSectionTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
-  publicModalLineRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#f8dede",
-    paddingTop: 10,
-    gap: 4,
-  },
-  publicModalLineLabel: { color: "#b91c1c", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
-  publicModalLineValue: { color: "#334155", fontSize: 15, lineHeight: 21 },
-  publicContactCard: {
-    borderWidth: 1,
-    borderColor: "#dbeafe",
-    borderRadius: 16,
-    backgroundColor: "#f8fbff",
-    padding: 12,
-    gap: 3,
-  },
-  publicContactName: { fontSize: 15, fontWeight: "800", color: "#111827" },
-  publicContactLine: { color: "#475569", fontSize: 13 },
-  publicModalEmpty: { color: "#6b7280" },
   snapshotStamp: { color: "#6b7280", fontSize: 12, marginTop: 8 },
 
   apiHint: { color: "#9ca3af", textAlign: "center", fontSize: 12, marginTop: 8 },

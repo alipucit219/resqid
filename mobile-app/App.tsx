@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
 import {
+  ActivityIndicator,
   AppState,
   Alert,
   Image,
@@ -24,6 +25,7 @@ import DateTimePicker, { type DateTimePickerEvent } from "@react-native-communit
 import * as Location from "expo-location";
 import * as SQLite from "expo-sqlite";
 import * as Clipboard from "expo-clipboard";
+import * as FileSystem from "expo-file-system";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
@@ -39,9 +41,14 @@ import notifee, {
 } from "react-native-notify-kit";
 import AccessibilityOnboarding from "./AccessibilityOnboarding";
 
+const textInputWithDefaults = TextInput as typeof TextInput & { defaultProps?: Record<string, unknown> };
+textInputWithDefaults.defaultProps = {
+  ...(textInputWithDefaults.defaultProps || {}),
+  placeholderTextColor: "#9ca3af",
+};
 
 
-type AuthScreen = "login" | "register" | "forgot" | "public";
+type AuthScreen = "login" | "register" | "forgot" | "verifyReset" | "reset" | "public";
 type Tab = "home" | "profile" | "summary" | "contacts" | "notifications";
 type NotificationItem = {
   id: string;
@@ -104,6 +111,7 @@ type Profile = {
   gender: string;
 };
 type Summary = {
+  id: string;
   hospitalName: string;
   doctorName: string;
   diseaseStartingYear: string;
@@ -114,7 +122,7 @@ type Summary = {
   notes: string;
 };
 type QrData = { qrCodeDataUrl?: string | null; emergencyUrl?: string | null };
-type Snapshot = { user: User; profile: Profile; summary: Summary; contacts: Contact[]; qr: QrData | null; savedAt: string };
+type Snapshot = { user: User; profile: Profile; summary: Summary; summaries: Summary[]; contacts: Contact[]; qr: QrData | null; savedAt: string };
 type PublicData = { user: { fullName: string }; medicalProfile: any; medicalSummary?: any; emergencyContacts: any[] };
 type StoredLocation = { latitude: number; longitude: number; capturedAt: string };
 type QueueRow = { id: number; kind: QueueKind; payload: string };
@@ -153,6 +161,8 @@ let ACTIVE_API = API_BASES[0];
 const API = ACTIVE_API;
 const API_ORIGIN = API.replace(/\/v\d+$/i, "");
 const currentApiOrigin = () => ACTIVE_API.replace(/\/v\d+$/i, "");
+const apiErrorMessage = (data: any, fallback: string) =>
+  Array.isArray(data?.message) ? data.message.join(", ") : data?.message || fallback;
 const normalizeEmergencyUrl = (value?: string | null) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -212,6 +222,7 @@ const EMPTY_PROFILE: Profile = {
   gender: "",
 };
 const EMPTY_SUMMARY: Summary = {
+  id: "",
   hospitalName: "",
   doctorName: "",
   diseaseStartingYear: "",
@@ -299,6 +310,64 @@ const toContactBody = (payload: any) => ({
   relationship: payload?.relationship ? String(payload.relationship).trim() : undefined,
   isPrimary: Boolean(payload?.isPrimary),
 });
+const resolveAssetUrl = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const apiOrigin = currentApiOrigin();
+  if (raw.startsWith("/")) return `${apiOrigin}${raw}`;
+  return `${apiOrigin}/${raw.replace(/^\/+/, "")}`;
+};
+const fileNameFromPath = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.split("?")[0].split("#")[0];
+  return cleaned.split("/").filter(Boolean).pop() || "";
+};
+const displayCheckupFileLabel = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Uploaded PDF";
+  const fileName = fileNameFromPath(raw);
+  return fileName || raw;
+};
+const resolveCheckupDownloadUrl = (value?: string | null) => {
+  const fileName = fileNameFromPath(value);
+  if (!fileName) return "";
+  return `${ACTIVE_API}/me/medical-summary/checkup-files/${encodeURIComponent(fileName)}/download`;
+};
+const safeId = () => `summary-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const normalizeSummaryEntry = (value: any, fallbackId?: string): Summary => ({
+  id: String(value?.id || fallbackId || safeId()),
+  hospitalName: String(value?.hospitalName || ""),
+  doctorName: String(value?.doctorName || ""),
+  diseaseStartingYear:
+    value?.diseaseStartingYear !== undefined && value?.diseaseStartingYear !== null
+      ? String(value.diseaseStartingYear)
+      : "",
+  treatmentDuration: String(value?.treatmentDuration || ""),
+  treatmentStatus: String(value?.treatmentStatus || ""),
+  checkupFiles: arr(value?.checkupFiles),
+  currentMedications: arr(value?.currentMedications),
+  notes: String(value?.notes || ""),
+});
+const hasSummaryContent = (value: Summary) =>
+  Boolean(
+    value.hospitalName.trim() ||
+      value.doctorName.trim() ||
+      value.diseaseStartingYear.trim() ||
+      value.treatmentDuration.trim() ||
+      value.treatmentStatus.trim() ||
+      value.notes.trim() ||
+      value.checkupFiles.length ||
+      value.currentMedications.length,
+  );
+const sortSummaryEntries = (items: Summary[]) =>
+  [...items].sort((a, b) => String(b.id).localeCompare(String(a.id)));
+const mergeSummaryDraft = (items: Summary[], draft: Summary) => {
+  const cleanItems = items.filter((item) => item.id !== draft.id);
+  if (!hasSummaryContent(draft)) return sortSummaryEntries(cleanItems);
+  return sortSummaryEntries([{ ...draft, id: draft.id || safeId() }, ...cleanItems]);
+};
 
 async function api<T>(path: string, method: Method = "GET", token?: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
@@ -332,11 +401,7 @@ async function api<T>(path: string, method: Method = "GET", token?: string, body
       }
 
       if (!res.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message || `${method} ${path} failed (${res.status})`,
-        );
+        throw new Error(apiErrorMessage(data, `${method} ${path} failed (${res.status})`));
       }
 
       ACTIVE_API = base;
@@ -352,6 +417,55 @@ async function api<T>(path: string, method: Method = "GET", token?: string, body
   throw new Error(
     `Network request failed. Tried: ${order.join(", ")}. ${errMsg(lastNetworkError)}`,
   );
+}
+
+async function uploadForm<T>(path: string, token: string, form: FormData): Promise<T> {
+  const order = [ACTIVE_API, ...API_BASES.filter((base) => base !== ACTIVE_API)];
+  let lastNetworkError: unknown = null;
+  let lastRouteError: Error | null = null;
+
+  for (const base of order) {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const res = await fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      const finalUrl = `${base}${path}`;
+console.log("trying upload url", finalUrl);
+
+
+      if (res.status === 401 || res.status === 403) {
+        onAuthExpired?.();
+        throw new Error("Session expired. Please log in again.");
+      }
+
+      if (!res.ok) {
+        const routeError = new Error(apiErrorMessage(data, `POST ${path} failed (${res.status})`));
+        if (res.status === 404) {
+          lastRouteError = routeError;
+          continue;
+        }
+        throw routeError;
+      }
+
+      ACTIVE_API = base;
+      return data as T;
+    } catch (error) {
+      if (!netErr(error)) throw error;
+      lastNetworkError = error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  if (lastRouteError) throw lastRouteError;
+  throw new Error(`Network request failed. Tried: ${order.join(", ")}. ${errMsg(lastNetworkError)}`);
 }
 
 async function initDb(db: SQLite.SQLiteDatabase) {
@@ -569,6 +683,11 @@ export default function App() {
   const [loginErrors, setLoginErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotEmailError, setForgotEmailError] = useState("");
+  const [resetCodeInput, setResetCodeInput] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [register, setRegister] = useState({ ...EMPTY_REGISTER });
   const [registerErrors, setRegisterErrors] = useState<AuthFieldErrors>({});
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -578,7 +697,9 @@ export default function App() {
   const [showProfileDobPicker, setShowProfileDobPicker] = useState(false);
 
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
-  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [summary, setSummary] = useState<Summary>({ ...EMPTY_SUMMARY, id: safeId() });
+  const [summaries, setSummaries] = useState<Summary[]>([]);
+  const [uploadingCheckupFile, setUploadingCheckupFile] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [qr, setQr] = useState<QrData | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -663,6 +784,11 @@ export default function App() {
       ...value,
       emergencyUrl: normalizeEmergencyUrl(value.emergencyUrl),
     });
+  };
+  const getActiveSummaries = () => mergeSummaryDraft(summaries, summary);
+  const clearSummaryDraft = () => {
+    setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+    setSmDraft("");
   };
   const scheduleAlertNotification = async (title: string, body: string) => {
     const settings = await Notifications.getPermissionsAsync();
@@ -783,6 +909,13 @@ export default function App() {
     setShowRegConfirm(false);
     setShowRegisterDobPicker(false);
   };
+  const resetResetPasswordForm = () => {
+    setResetCodeInput("");
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setShowResetPassword(false);
+    setShowResetConfirmPassword(false);
+  };
   const onRegisterDobChange = (_: DateTimePickerEvent, selected?: Date) => {
     setShowRegisterDobPicker(false);
     if (selected) {
@@ -829,7 +962,10 @@ export default function App() {
     await setKV(db, "last_location", storedLocation);
   };
 
-  const toPublic = (snap: Snapshot): PublicData => ({
+  const toPublic = (snap: Snapshot): PublicData => {
+    const visibleSummaries = snap.summaries?.length ? snap.summaries : hasSummaryContent(snap.summary) ? [snap.summary] : [];
+    const primarySummary = visibleSummaries[0] || snap.summary;
+    return {
     user: { fullName: snap.user.fullName },
     medicalProfile: {
       bloodGroup: snap.profile.bloodGroup || null,
@@ -842,12 +978,13 @@ export default function App() {
       emergencyNotes: snap.profile.emergencyNotes || null,
     },
     medicalSummary: {
-      hospitalName: snap.summary.hospitalName || null,
-      doctorName: snap.summary.doctorName || null,
-      diseaseStartingYear: snap.summary.diseaseStartingYear ? Number(snap.summary.diseaseStartingYear) : null,
-      treatmentStatus: snap.summary.treatmentStatus || null,
-      checkupFiles: snap.summary.checkupFiles || [],
-      currentMedications: snap.summary.currentMedications,
+      hospitalName: primarySummary?.hospitalName || null,
+      doctorName: primarySummary?.doctorName || null,
+      diseaseStartingYear: primarySummary?.diseaseStartingYear ? Number(primarySummary.diseaseStartingYear) : null,
+      treatmentStatus: primarySummary?.treatmentStatus || null,
+      checkupFiles: primarySummary?.checkupFiles || [],
+      currentMedications: primarySummary?.currentMedications || [],
+      entries: visibleSummaries,
     },
     emergencyContacts: snap.contacts.map((c) => ({
       name: c.name,
@@ -856,7 +993,8 @@ export default function App() {
       relationship: c.relationship || null,
       isPrimary: !!c.isPrimary,
     })),
-  });
+    };
+  };
 
   const hydrate = async (t: string, currentUser?: User, silent = false) => {
     const [profileRes, summaryRes, contactsRes] = await Promise.all([
@@ -889,23 +1027,17 @@ export default function App() {
           },
     );
 
-    setSummary(
-      summaryRes
-        ? {
-            hospitalName: summaryRes.hospitalName || "",
-            doctorName: summaryRes.doctorName || "",
-            diseaseStartingYear:
-              summaryRes.diseaseStartingYear !== undefined && summaryRes.diseaseStartingYear !== null
-                ? String(summaryRes.diseaseStartingYear)
-                : "",
-            treatmentDuration: summaryRes.treatmentDuration || "",
-            treatmentStatus: summaryRes.treatmentStatus || "",
-            checkupFiles: arr(summaryRes.checkupFiles),
-            currentMedications: arr(summaryRes.currentMedications),
-            notes: summaryRes.notes || "",
-          }
-        : EMPTY_SUMMARY,
-    );
+    const nextSummaries = summaryRes?.entries?.length
+      ? sortSummaryEntries(
+          summaryRes.entries.map((entry: any, index: number) =>
+            normalizeSummaryEntry(entry, entry?.id || `summary-${index + 1}`),
+          ),
+        )
+      : summaryRes
+        ? [normalizeSummaryEntry(summaryRes, "summary-1")]
+        : [];
+    setSummaries(nextSummaries);
+    setSummary(nextSummaries[0] || { ...EMPTY_SUMMARY, id: safeId() });
 
     setContacts(contactsRes || []);
 
@@ -1064,7 +1196,8 @@ export default function App() {
       setContacts([]);
       setQr(null);
       setProfile(EMPTY_PROFILE);
-      setSummary(EMPTY_SUMMARY);
+      setSummary({ ...EMPTY_SUMMARY, id: safeId() });
+      setSummaries([]);
       setAuthScreen("login");
       setTab("home");
       setIsLocked(false);
@@ -1097,6 +1230,7 @@ export default function App() {
       user,
       profile,
       summary,
+      summaries,
       contacts,
       qr,
       savedAt: new Date().toISOString(),
@@ -1104,7 +1238,7 @@ export default function App() {
     void setKV(db, "snapshot", snap);
     void setKV(db, "qr_data", qr);
     setSnapshot(snap);
-  }, [db, user, profile, summary, contacts, qr]);
+  }, [db, user, profile, summary, summaries, contacts, qr]);
 
   useEffect(() => {
     if (!db) return;
@@ -1396,11 +1530,64 @@ useEffect(() => {
         throw new Error("Please enter a valid email.");
       }
 
-      const response = await api<{ message: string }>("/auth/forgot-password", "POST", undefined, { email });
+      const response = await api<{ message: string; resetCode?: string; usedFallback?: boolean }>(
+        "/auth/forgot-password",
+        "POST",
+        undefined,
+        { email },
+      );
       setForgotEmailError("");
       setLogin((prev) => ({ ...prev, email }));
+      if (response.resetCode) {
+        await Clipboard.setStringAsync(response.resetCode);
+        setResetCodeInput(response.resetCode);
+        setInfo("Reset code copied because email delivery is not configured on this server.");
+      }
+      setOk(response.message || "Password reset code sent.");
+      setAuthScreen("verifyReset");
+    });
+
+  const verifyResetCodeInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to verify reset code.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
+      if (!/^\d{6}$/.test(code)) throw new Error("Reset code must be 6 digits.");
+
+      const response = await api<{ message: string }>(
+        "/auth/verify-reset-code",
+        "POST",
+        undefined,
+        { email, code },
+      );
+      setOk(response.message || "Reset code verified.");
+      setAuthScreen("reset");
+    });
+
+  const resetPasswordInApp = () =>
+    run(async () => {
+      if (!isOnline) throw new Error("Internet is required to reset password.");
+      const email = forgotEmail.trim().toLowerCase();
+      const code = resetCodeInput.trim();
+      if (!email) throw new Error("Email is required.");
+      if (!code) throw new Error("Reset code is required.");
+      if (!resetPassword) throw new Error("New password is required.");
+      if (resetPassword.length < 8) throw new Error("Password must be at least 8 characters.");
+      if (!resetConfirmPassword) throw new Error("Confirm password is required.");
+      if (resetPassword !== resetConfirmPassword) throw new Error("Passwords do not match.");
+
+      const response = await api<{ message: string }>(
+        "/auth/reset-password",
+        "POST",
+        undefined,
+        { email, code, newPassword: resetPassword },
+      );
+      setLogin((prev) => ({ ...prev, email: forgotEmail.trim().toLowerCase(), password: "" }));
+      resetResetPasswordForm();
       setAuthScreen("login");
-      setOk(response.message || "Password reset instructions sent.");
+      setOk(response.message || "Password has been reset.");
     });
 
   const saveProfileCore = async () => {
@@ -1435,25 +1622,44 @@ useEffect(() => {
   };
 
   const saveSummaryCore = async () => {
-    const parsedYear = summary.diseaseStartingYear.trim()
-      ? toNumericYear(summary.diseaseStartingYear.trim())
-      : null;
-    if (summary.diseaseStartingYear.trim() && parsedYear === null) {
-      throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+    const entries = getActiveSummaries();
+    for (const item of entries) {
+      const parsedYear = item.diseaseStartingYear.trim() ? toNumericYear(item.diseaseStartingYear.trim()) : null;
+      if (item.diseaseStartingYear.trim() && parsedYear === null) {
+        throw new Error(`Disease starting year must be between 1900 and ${new Date().getFullYear()}.`);
+      }
+      if (item.checkupFiles.some((file) => !isPdfReference(file))) {
+        throw new Error("Checkup files must be PDF files (ending with .pdf).");
+      }
     }
-    if (summary.checkupFiles.some((item) => !isPdfReference(item))) {
-      throw new Error("Checkup files must be PDF files (ending with .pdf).");
-    }
+    const primary = entries[0];
     const payload = {
-      hospitalName: summary.hospitalName || undefined,
-      doctorName: summary.doctorName || undefined,
-      diseaseStartingYear: parsedYear ?? undefined,
-      treatmentDuration: summary.treatmentDuration || undefined,
-      treatmentStatus: summary.treatmentStatus || undefined,
-      checkupFiles: summary.checkupFiles,
-      currentMedications: summary.currentMedications,
-      notes: summary.notes || undefined,
+      hospitalName: primary?.hospitalName || undefined,
+      doctorName: primary?.doctorName || undefined,
+      diseaseStartingYear: primary?.diseaseStartingYear.trim()
+        ? toNumericYear(primary.diseaseStartingYear.trim()) ?? undefined
+        : undefined,
+      treatmentDuration: primary?.treatmentDuration || undefined,
+      treatmentStatus: primary?.treatmentStatus || undefined,
+      checkupFiles: primary?.checkupFiles || [],
+      currentMedications: primary?.currentMedications || [],
+      notes: primary?.notes || undefined,
+      entries: entries.map((item) => ({
+        id: item.id,
+        hospitalName: item.hospitalName || undefined,
+        doctorName: item.doctorName || undefined,
+        diseaseStartingYear: item.diseaseStartingYear.trim()
+          ? toNumericYear(item.diseaseStartingYear.trim()) ?? undefined
+          : undefined,
+        treatmentDuration: item.treatmentDuration || undefined,
+        treatmentStatus: item.treatmentStatus || undefined,
+        checkupFiles: item.checkupFiles,
+        currentMedications: item.currentMedications,
+        notes: item.notes || undefined,
+      })),
     };
+    setSummaries(entries);
+    clearSummaryDraft();
     if (isOnline) {
       try {
         await api("/me/medical-summary", "PUT", token, payload);
@@ -1740,6 +1946,120 @@ useEffect(() => {
       checkupFiles: prev.checkupFiles.filter((item) => item !== value),
     }));
   };
+
+  const uploadCheckupFile = () =>
+    run(async () => {
+      if (uploadingCheckupFile) return;
+      setUploadingCheckupFile(true);
+      try {
+        if (!isOnline) throw new Error("Internet is required to upload a PDF.");
+        let pickerModule: any = null;
+        try {
+          pickerModule = require("expo-document-picker");
+        } catch {
+          throw new Error("PDF picker is not installed in this build yet.");
+        }
+        const picked = await pickerModule.getDocumentAsync({
+          type: "application/pdf",
+          copyToCacheDirectory: true,
+          multiple: false,
+        });
+        if (picked.canceled || !picked.assets?.length) return;
+        const file = picked.assets[0];
+        if (!isPdfReference(file.name || file.uri || "")) {
+          throw new Error("Only PDF files are allowed.");
+        }
+        const form = new FormData();
+        form.append("file", {
+          uri: file.uri,
+          name: file.name || `checkup-${Date.now()}.pdf`,
+          type: "application/pdf",
+        } as any);
+        const data = await uploadForm<{ checkupFile?: string; fileName?: string; filename?: string }>(
+          "/me/medical-summary/checkup-files",
+          token,
+          form,
+        );
+        const storedName = String(data?.checkupFile || data?.fileName || data?.filename || "").trim();
+        if (!isPdfReference(storedName)) {
+          throw new Error("Upload succeeded but server returned no PDF filename.");
+        }
+
+        setSummary((prev) => ({
+          ...prev,
+          checkupFiles: [...prev.checkupFiles, storedName].filter(
+            (item, index, arr) => Boolean(item) && arr.indexOf(item) === index,
+          ),
+        }));
+        setOk("Checkup PDF uploaded. Tap Save to attach it to your summary.");
+      } finally {
+        setUploadingCheckupFile(false);
+      }
+    });
+
+
+  const downloadCheckupFile = (value: string) =>
+    run(async () => {
+      if (!token) throw new Error("Not authenticated.");
+      const downloadUrl = resolveCheckupDownloadUrl(value);
+      const fallbackUrl = resolveAssetUrl(value);
+      const url = downloadUrl || fallbackUrl;
+      if (!url) throw new Error("No PDF URL available.");
+
+      // If it's a plain public URL (http/https without our API base), open directly
+      if (!downloadUrl) {
+        const canOpen = await Linking.canOpenURL(url);
+        if (!canOpen) throw new Error("Cannot open this PDF on this device.");
+        await Linking.openURL(url);
+        return;
+      }
+
+      // Authenticated download — fetch with token then open the local copy
+      const fileName = fileNameFromPath(value) || `checkup-${Date.now()}.pdf`;
+      const cacheDir = FileSystem.Paths.cache.uri || "file://";
+      const localUri = `${cacheDir}${fileName}`;
+      const result = await FileSystem.downloadAsync(downloadUrl, localUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`Download failed (${result.status}).`);
+      }
+      const canOpen = await Linking.canOpenURL(result.uri);
+      if (!canOpen) throw new Error("No app available to open this PDF.");
+      await Linking.openURL(result.uri);
+    });
+
+  const saveSummaryDraft = () => {
+    const nextDraft = { ...summary, id: summary.id || safeId() };
+    if (!hasSummaryContent(nextDraft)) {
+      pushToast("Add summary details before saving an entry.", "error");
+      return;
+    }
+    const editingExisting = summaries.some((item) => item.id === nextDraft.id);
+    const nextEntries = mergeSummaryDraft(summaries, nextDraft);
+    setSummaries(nextEntries);
+    clearSummaryDraft();
+    setOk(editingExisting ? "Summary entry updated." : "Summary entry added.");
+  };
+
+  const editSummaryEntry = (entry: Summary) => {
+    setSummary(entry);
+    setSmDraft("");
+    setTab("profile");
+    requestAnimationFrame(() => {
+      mainScrollRef.current?.scrollTo({ y: 900, animated: true });
+    });
+  };
+
+  const deleteSummaryEntry = (id: string) => {
+    setSummaries((prev) => prev.filter((item) => item.id !== id));
+    if (summary.id === id) {
+      clearSummaryDraft();
+    }
+    setInfo("Summary entry removed.");
+  };
+
+  const isEditingSummaryEntry = summaries.some((item) => item.id === summary.id);
 
   const enableLock = () => {
     const pin = lockPinDraft.trim();
@@ -2112,7 +2432,7 @@ useEffect(() => {
                 </Pressable>
                 <View>
                   <Text style={s.authTitle}>Forgot Password</Text>
-                  <Text style={s.authSub}>We will send reset instructions to your email</Text>
+                  <Text style={s.authSub}>We will send a 6-digit code to your email</Text>
                 </View>
               </View>
 
@@ -2129,7 +2449,86 @@ useEffect(() => {
               />
               {!!forgotEmailError && <Text style={s.fieldError}>{forgotEmailError}</Text>}
               <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={requestPasswordReset}>
-                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Link"}</Text>
+                <Text style={s.primaryBtnText}>{busy ? "Submitting..." : "Send Reset Code"}</Text>
+              </Pressable>
+              <Text style={s.linkSoft} onPress={() => setAuthScreen("verifyReset")}>Already have a reset code?</Text>
+            </View>
+          )}
+
+          {authScreen === "verifyReset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("forgot")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>Verify Code</Text>
+                  <Text style={s.authSub}>Enter the 6-digit code sent to your email</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>Reset Code</Text>
+              <Field
+                icon="key-outline"
+                placeholder="Enter 6-digit code"
+                value={resetCodeInput}
+                onChangeText={(v) => setResetCodeInput(v.replace(/\D/g, "").slice(0, 6))}
+                keyboardType="number-pad"
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={verifyResetCodeInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Checking..." : "Verify Code"}</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {authScreen === "reset" && (
+            <View style={s.formWrap}>
+              <View style={s.authTop}>
+                <Pressable onPress={() => setAuthScreen("verifyReset")}>
+                  <Ionicons name="chevron-back" size={24} color="#6b7280" />
+                </Pressable>
+                <View>
+                  <Text style={s.authTitle}>New Password</Text>
+                  <Text style={s.authSub}>Set your new password after code verification</Text>
+                </View>
+              </View>
+
+              <Text style={s.formLabel}>New Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Enter new password"
+                value={resetPassword}
+                onChangeText={setResetPassword}
+                secureTextEntry={!showResetPassword}
+                right={
+                  <Pressable onPress={() => setShowResetPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Text style={s.formLabel}>Confirm Password</Text>
+              <Field
+                icon="lock-closed-outline"
+                placeholder="Confirm new password"
+                value={resetConfirmPassword}
+                onChangeText={setResetConfirmPassword}
+                secureTextEntry={!showResetConfirmPassword}
+                right={
+                  <Pressable onPress={() => setShowResetConfirmPassword((v) => !v)}>
+                    <Ionicons
+                      name={showResetConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                      size={22}
+                      color="#6b7280"
+                    />
+                  </Pressable>
+                }
+              />
+              <Pressable style={[s.primaryBtn, busy && s.primaryBtnDisabled]} disabled={busy} onPress={resetPasswordInApp}>
+                <Text style={s.primaryBtnText}>{busy ? "Updating..." : "Reset Password"}</Text>
               </Pressable>
             </View>
           )}
@@ -2341,16 +2740,16 @@ useEffect(() => {
             )}
 
             {showIdentitySheet && (
-              <View style={s.sectionCard}>
+              <View style={s.identityCard}>
                 <View style={s.contactsHeader}>
                   <Text style={s.sectionCardTitle}>Identity Details</Text>
                   <Text style={s.viewAll} onPress={() => setShowIdentitySheet(false)}>Close</Text>
                 </View>
-                <Text style={s.publicLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
-                <Text style={s.publicLine}>Age: {profile.age || "Not set"}</Text>
-                <Text style={s.publicLine}>Address: {profile.address || user?.address || "Not set"}</Text>
-                <Text style={s.publicLine}>Date of Birth: {profile.dateOfBirth || "Not set"}</Text>
-                <Text style={s.publicLine}>Gender: {profile.gender || "Not set"}</Text>
+                <Text style={s.identityLine}>CNIC: {profile.cnic || user?.cnic || "Not set"}</Text>
+                <Text style={s.identityLine}>Age: {profile.age || "Not set"}</Text>
+                <Text style={s.identityLine}>Address: {profile.address || user?.address || "Not set"}</Text>
+                <Text style={s.identityLine}>Date of Birth: {profile.dateOfBirth || user?.dateOfBirth || "Not set"}</Text>
+                <Text style={s.identityLine}>Gender: {profile.gender || user?.gender || "Not set"}</Text>
               </View>
             )}
 
@@ -2559,74 +2958,47 @@ useEffect(() => {
             </View>
 
             <View style={[s.sectionCard, s.sectionCardSoft]}>
-              <Text style={s.sectionCardTitle}>Security</Text>
-              <Text style={s.sectionHint}>Enable local 2-step PIN lock for app and lock-screen mode.</Text>
-              {isLockEnabled ? (
-                <>
-                  <Text style={s.securityInfo}>2-step lock is enabled on this device.</Text>
-                  <View style={s.summaryRow}>
-                    <Pressable style={[s.primaryBtn, s.flexOne]} onPress={() => setIsLocked(true)}>
-                      <Text style={s.primaryBtnText}>Lock Now</Text>
-                    </Pressable>
-                    <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={disableLock}>
-                      <Text style={s.subtleBtnText}>Disable</Text>
-                    </Pressable>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <TextInput
-                    style={s.inlineInput}
-                    placeholder="Set 4-digit PIN"
-                    keyboardType="number-pad"
-                    secureTextEntry
-                    value={lockPinDraft}
-                    onChangeText={(v) => setLockPinDraft(v.replace(/[^0-9]/g, "").slice(0, 4))}
-                  />
-                  <TextInput
-                    style={s.inlineInput}
-                    placeholder="Confirm PIN"
-                    keyboardType="number-pad"
-                    secureTextEntry
-                    value={lockPinConfirm}
-                    onChangeText={(v) => setLockPinConfirm(v.replace(/[^0-9]/g, "").slice(0, 4))}
-                  />
-                  <Pressable style={s.primaryBtn} onPress={enableLock}>
-                    <Text style={s.primaryBtnText}>Enable 2-Step Lock</Text>
-                  </Pressable>
-                </>
-              )}
-              {!!lockHint && <Text style={s.sectionHint}>{lockHint}</Text>}
-            </View>
-
-            <View style={[s.sectionCard, s.sectionCardSoft]}>
               <Text style={s.sectionCardTitle}>Treatment Summary</Text>
-              <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
-              <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
+              <TextInput style={s.inlineInput} placeholder="Hospital name" value={summary.hospitalName} placeholderTextColor={'grey'} onChangeText={(v) => setSummary((p) => ({ ...p, hospitalName: v }))} />
+              <TextInput style={s.inlineInput} placeholder="Doctor name" value={summary.doctorName} placeholderTextColor={'grey'} onChangeText={(v) => setSummary((p) => ({ ...p, doctorName: v }))} />
               <TextInput
                 style={s.inlineInput}
                 placeholder="Disease starting year"
                 keyboardType="number-pad"
                 value={summary.diseaseStartingYear}
+                placeholderTextColor={'grey'}
                 onChangeText={(v) => setSummary((p) => ({ ...p, diseaseStartingYear: v.replace(/[^0-9]/g, "") }))}
               />
               <View style={s.summaryRow}>
-                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
-                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
+                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Duration" value={summary.treatmentDuration} placeholderTextColor={'grey'} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentDuration: v }))} />
+                <TextInput style={[s.inlineInput, s.flexOne]} placeholder="Status" value={summary.treatmentStatus} placeholderTextColor={'grey'} onChangeText={(v) => setSummary((p) => ({ ...p, treatmentStatus: v }))} />
               </View>
-              <View style={s.inlineRow}>
-                <TextInput style={s.inlineInput} placeholder="Checkup PDF URL or name (.pdf)" value={checkupFileDraft} onChangeText={setCheckupFileDraft} />
-                <Pressable style={[s.inlineBtn, s.inlineBtnGreen]} onPress={addCheckupFile}><Text style={s.inlineBtnText}>Add</Text></Pressable>
-              </View>
+              <Pressable
+                style={[s.subtleBtn, uploadingCheckupFile && s.subtleBtnDisabled]}
+                disabled={uploadingCheckupFile}
+                onPress={uploadCheckupFile}
+              >
+                <View style={s.buttonContentRow}>
+                  {uploadingCheckupFile ? <ActivityIndicator size="small" color="#374151" /> : null}
+                  <Text style={s.subtleBtnText}>
+                    {uploadingCheckupFile ? "Uploading PDF..." : "Upload Checkup PDF"}
+                  </Text>
+                </View>
+              </Pressable>
               <View style={s.listWrap}>
                 {summary.checkupFiles.length === 0 ? (
                   <Text style={s.sectionHint}>No checkup files added</Text>
                 ) : (
                   summary.checkupFiles.map((item, idx) => (
                     <View key={`${item}-${idx}`} style={s.itemPill}>
-                      <Text style={s.itemPillText}>{item}</Text>
+                      <Text style={s.itemPillText} numberOfLines={1}>
+                        {displayCheckupFileLabel(item)}
+                      </Text>
+                      <Pressable style={s.itemPillAction} onPress={() => downloadCheckupFile(item)}>
+                        <Ionicons name="download-outline" size={18} color="#2563eb" />
+                      </Pressable>
                       <Pressable style={s.itemPillRemove} onPress={() => removeCheckupFile(item)}>
-                        <Ionicons name="close" size={14} color="#b91c1c" />
+                        <Ionicons name="close" size={18} color="#b91c1c" />
                       </Pressable>
                     </View>
                   ))
@@ -2651,6 +3023,31 @@ useEffect(() => {
                 )}
               </View>
               <TextInput style={s.textArea} multiline placeholder="Notes" value={summary.notes} onChangeText={(v) => setSummary((p) => ({ ...p, notes: v }))} />
+              <View style={s.summaryRow}>
+                <Pressable style={[s.primaryBtn, s.flexOne]} onPress={saveSummaryDraft}>
+                  <Text style={s.primaryBtnText}>{isEditingSummaryEntry ? "Update Entry" : "Add Entry"}</Text>
+                </Pressable>
+                <Pressable style={[s.subtleBtn, s.flexOne, s.compactBtn]} onPress={clearSummaryDraft}>
+                  <Text style={s.subtleBtnText}>Clear Form</Text>
+                </Pressable>
+              </View>
+              <View style={s.listColumn}>
+                {getActiveSummaries().length === 0 ? (
+                  <Text style={s.sectionHint}>No treatment summaries added</Text>
+                ) : (
+                  getActiveSummaries().map((item, idx) => (
+                    <View key={item.id || `${item.hospitalName}-${idx}`} style={s.savedSummaryCard}>
+                      <Text style={s.savedSummaryTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                      <Text style={s.savedSummaryLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                      <Text style={s.savedSummaryLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                      <View style={s.contactActions}>
+                        <Text style={s.contactAction} onPress={() => editSummaryEntry(item)}>Edit</Text>
+                        <Text style={s.contactAction} onPress={() => deleteSummaryEntry(item.id)}>Delete</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
             </View>
           </>
         )}
@@ -2675,48 +3072,24 @@ useEffect(() => {
             </View>
 
             <View style={s.sectionCard}>
-              <Text style={s.sectionCardTitle}>Treatment Summary</Text>
-              <Text style={s.publicLine}>Hospital: {summary.hospitalName || "Not set"}</Text>
-              <Text style={s.publicLine}>Doctor: {summary.doctorName || "Not set"}</Text>
-              <Text style={s.publicLine}>Disease Starting Year: {summary.diseaseStartingYear || "Not set"}</Text>
-              <Text style={s.publicLine}>Duration: {summary.treatmentDuration || "Not set"}</Text>
-              <Text style={s.publicLine}>Status: {summary.treatmentStatus || "Not set"}</Text>
-              <Text style={s.publicLine}>Checkup PDFs: {joinOrFallback(summary.checkupFiles)}</Text>
-              <Text style={s.publicLine}>Current Medications: {joinOrFallback(summary.currentMedications)}</Text>
-              <Text style={s.publicLine}>Notes: {summary.notes || "Not set"}</Text>
-            </View>
-
-            <View style={s.qrTop}><Text style={s.sectionCardTitle}>Medical QR</Text></View>
-            <View style={s.qrAvatar}><Text style={s.qrAvatarText}>{firstName.slice(0, 1).toUpperCase()}</Text></View>
-            <Text style={s.qrName}>{user.fullName}</Text>
-            <Text style={s.qrSub}>Blood Group: {profile.bloodGroup || "Not set"}</Text>
-
-            <View style={s.qrCard}>
-              {qr?.qrCodeDataUrl ? (
-                <Image source={{ uri: qr.qrCodeDataUrl }} style={s.qrImage} />
+              <Text style={s.sectionCardTitle}>Treatment Summaries</Text>
+              {getActiveSummaries().length === 0 ? (
+                <Text style={s.publicLine}>No treatment summary added.</Text>
               ) : (
-                <Text style={s.qrPlaceholder}>No QR generated yet</Text>
+                getActiveSummaries().map((item, idx) => (
+                  <View key={item.id || `${item.hospitalName}-${idx}`} style={s.summaryListBlock}>
+                    <Text style={s.summaryListTitle}>{item.hospitalName || `Summary ${idx + 1}`}</Text>
+                    <Text style={s.publicLine}>Doctor: {item.doctorName || "Not set"}</Text>
+                    <Text style={s.publicLine}>Disease Starting Year: {item.diseaseStartingYear || "Not set"}</Text>
+                    <Text style={s.publicLine}>Duration: {item.treatmentDuration || "Not set"}</Text>
+                    <Text style={s.publicLine}>Status: {item.treatmentStatus || "Not set"}</Text>
+                    <Text style={s.publicLine}>Current Medications: {joinOrFallback(item.currentMedications)}</Text>
+                    <Text style={s.publicLine}>Notes: {item.notes || "Not set"}</Text>
+                  </View>
+                ))
               )}
             </View>
-            <Text style={s.qrHint}>Scan this QR code to view emergency medical information</Text>
-            <View style={s.urlCard}>
-              <Text style={s.urlLabel}>Emergency URL</Text>
-              <Text style={s.urlText}>{visibleEmergencyUrl || "No emergency URL available yet."}</Text>
-              <View style={s.urlActionRow}>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={copyEmergencyUrl}>
-                  <Ionicons name="copy-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Copy Link</Text>
-                </Pressable>
-                <Pressable style={[s.ghostBtn, s.urlActionBtn]} onPress={openEmergencyUrl}>
-                  <Ionicons name="open-outline" size={18} color="#111827" />
-                  <Text style={s.ghostBtnText}>Open in Browser</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={s.qrActionRow}>
-              <Pressable style={s.subtleBtn} onPress={regenQr}><Text style={s.subtleBtnText}>{busy ? "Working..." : "Regenerate"}</Text></Pressable>
-            </View>
+            <Pressable style={s.subtleBtn} onPress={() => setTab("profile")}><Text style={s.subtleBtnText}>Edit Summaries</Text></Pressable>
           </>
         )}
 
@@ -3099,7 +3472,9 @@ const s = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 16,
   },
+  subtleBtnDisabled: { opacity: 0.7 },
   subtleBtnText: { color: "#374151", fontWeight: "700" },
+  buttonContentRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   centerText: { textAlign: "center", color: "#6b7280", marginTop: 10, fontSize: 18 },
   link: { color: "#b91c1c", fontWeight: "700" },
   linkSoft: { textAlign: "center", color: "#374151", textDecorationLine: "underline", marginTop: 8 },
@@ -3288,7 +3663,7 @@ const s = StyleSheet.create({
     gap: 5,
     maxWidth: "100%",
   },
-  itemPillText: { color: "#334155", fontSize: 12 },
+  itemPillText: { color: "#334155", fontSize: 12, flexShrink: 1, maxWidth: 180 },
   itemPillRemove: {
     width: 18,
     height: 18,
@@ -3296,6 +3671,14 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fee2e2",
+  },
+  itemPillAction: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe",
   },
   textArea: {
     borderWidth: 1,
@@ -3310,6 +3693,12 @@ const s = StyleSheet.create({
   compactTextArea: { minHeight: 62 },
   sectionCardSoft: { backgroundColor: "#fafafa" },
   summaryRow: { flexDirection: "row", gap: 8 },
+  listColumn: { gap: 8, marginTop: 8 },
+  savedSummaryCard: { borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 14, backgroundColor: "#fff", padding: 12, gap: 4 },
+  savedSummaryTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
+  savedSummaryLine: { color: "#475569", fontSize: 13 },
+  summaryListBlock: { borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 10, marginTop: 4, gap: 2 },
+  summaryListTitle: { fontSize: 15, fontWeight: "800", color: "#111827", marginBottom: 2 },
   securityInfo: { color: "#334155", fontSize: 14 },
 
   qrTop: { alignItems: "center" },

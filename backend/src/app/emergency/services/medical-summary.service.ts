@@ -3,14 +3,25 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import * as AppRootPath from "app-root-path";
+import { promises as fs } from "fs";
+import { randomUUID } from "crypto";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
+import { basename, extname, join, parse } from "path";
 import { User, UserDocument } from "src/app/user/user.entity";
 import { EmergencyAdminListQueryDto, UpsertMedicalSummaryDto } from "../dtos";
 import {
   MedicalSummary,
   MedicalSummaryDocument,
 } from "../schemas/medical-summary.schema";
+
+const CHECKUP_FILES_DIRECTORY = join(
+  AppRootPath.path,
+  "storage",
+  "medical-summary",
+  "checkup-files",
+);
 
 type AdminListResponse = {
   data: Array<Record<string, unknown>>;
@@ -32,6 +43,46 @@ export class MedicalSummaryService {
     }
 
     return new Types.ObjectId(id);
+  }
+
+  private async ensureCheckupFilesDirectoryExists() {
+    await fs.mkdir(CHECKUP_FILES_DIRECTORY, { recursive: true });
+  }
+
+  private buildStoredCheckupFileName(originalFileName?: string) {
+    const parsedFileName = parse(originalFileName || "checkup-file.pdf");
+    const sanitizedBaseName = (parsedFileName.name || "checkup-file")
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    const baseName = sanitizedBaseName || "checkup-file";
+    const extension = extname(parsedFileName.base || "").toLowerCase() || ".pdf";
+    const uniqueSuffix = randomUUID().split("-")[0];
+
+    return `${baseName}-${uniqueSuffix}${extension}`;
+  }
+
+  private normalizeRequestedCheckupFileName(fileName: string) {
+    const normalizedFileName = String(fileName || "").trim();
+
+    if (!normalizedFileName) {
+      throw new BadRequestException("Checkup file name is required.");
+    }
+
+    if (basename(normalizedFileName) !== normalizedFileName) {
+      throw new BadRequestException("Invalid checkup file name.");
+    }
+
+    if (extname(normalizedFileName).toLowerCase() !== ".pdf") {
+      throw new BadRequestException("Only .pdf checkup files are supported.");
+    }
+
+    return normalizedFileName;
+  }
+
+  private getCheckupFileNameFromValue(value?: string | null) {
+    return basename(String(value || "").trim());
   }
 
   private async ensureUserExists(userId: string) {
@@ -66,6 +117,61 @@ export class MedicalSummaryService {
         setDefaultsOnInsert: true,
       },
     );
+  }
+
+  async uploadCheckupFile(userId: string, file: Express.Multer.File) {
+    await this.ensureUserExists(userId);
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("A PDF file is required.");
+    }
+
+    await this.ensureCheckupFilesDirectoryExists();
+
+    const storedFileName = this.buildStoredCheckupFileName(file.originalname);
+    const absolutePath = join(CHECKUP_FILES_DIRECTORY, storedFileName);
+
+    await fs.writeFile(absolutePath, file.buffer);
+
+    return {
+      checkupFile: storedFileName,
+      fileName: storedFileName,
+      originalFileName: file.originalname,
+    };
+  }
+
+  async getOwnedCheckupFileDownload(userId: string, fileName: string) {
+    await this.ensureUserExists(userId);
+
+    const normalizedFileName = this.normalizeRequestedCheckupFileName(fileName);
+    const summary = await this.medicalSummaryModel
+      .findOne({ userId: this.toObjectId(userId) })
+      .lean();
+
+    if (!summary) {
+      throw new NotFoundException("Medical summary not found.");
+    }
+
+    const hasAccessToFile = (summary.checkupFiles || []).some(
+      (value) => this.getCheckupFileNameFromValue(value) === normalizedFileName,
+    );
+
+    if (!hasAccessToFile) {
+      throw new NotFoundException("Checkup file not found.");
+    }
+
+    const absolutePath = join(CHECKUP_FILES_DIRECTORY, normalizedFileName);
+
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      throw new NotFoundException("Checkup file not found.");
+    }
+
+    return {
+      absolutePath,
+      fileName: normalizedFileName,
+    };
   }
 
   async adminList(query: EmergencyAdminListQueryDto): Promise<AdminListResponse> {

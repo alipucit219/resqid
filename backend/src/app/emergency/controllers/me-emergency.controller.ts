@@ -5,11 +5,20 @@ import {
   Get,
   Param,
   Post,
+  Res,
+  StreamableFile,
   Put,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
+import { createReadStream } from "fs";
+import { Response } from "express";
 import { AuthenticatedRequestPayload } from "src/shared/decorators";
 import { IAuthenticatedRequest } from "src/shared/interfaces";
+import { isProvidedFileAValidPdf } from "src/utils/is-valid-pdf.util";
 import {
   CreateEmergencyContactDto,
   CreatePanicAlertDto,
@@ -63,6 +72,60 @@ export class MeEmergencyController {
     @Body() payload: UpsertMedicalSummaryDto,
   ) {
     return await this.medicalSummaryService.upsertByUserId(req.user.id, payload);
+  }
+
+  @ApiOperation({ summary: "Upload a PDF checkup file for requesting user's medical summary" })
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: {
+          type: "string",
+          format: "binary",
+        },
+      },
+    },
+  })
+  @Post("medical-summary/checkup-files")
+  @Post("medical-summary/checkup-files")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      fileFilter: isProvidedFileAValidPdf,
+      limits: {
+        fileSize: 10 * 1024 * 1024,
+      },
+    }),
+  )
+  async uploadMedicalSummaryCheckupFile(
+    @AuthenticatedRequestPayload() req: IAuthenticatedRequest,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return await this.medicalSummaryService.uploadCheckupFile(req.user.id, file);
+  }
+
+  @ApiOperation({ summary: "Download a PDF checkup file for requesting user's medical summary" })
+  @Get("medical-summary/checkup-files/:fileName/download")
+  @Get("medical-summary/checkup-files/:fileName/download")
+  async downloadMedicalSummaryCheckupFile(
+    @AuthenticatedRequestPayload() req: IAuthenticatedRequest,
+    @Param("fileName") fileName: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const download = await this.medicalSummaryService.getOwnedCheckupFileDownload(
+      req.user.id,
+      fileName,
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${download.fileName}"`,
+    );
+
+    return new StreamableFile(createReadStream(download.absolutePath));
   }
 
   @ApiOperation({ summary: "List requesting user's emergency contacts" })
