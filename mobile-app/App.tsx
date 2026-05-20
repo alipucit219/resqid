@@ -2016,17 +2016,16 @@ useEffect(() => {
 
       // Authenticated download — fetch with token then open the local copy
       const fileName = fileNameFromPath(value) || `checkup-${Date.now()}.pdf`;
-      const cacheDir = FileSystem.Paths.cache.uri || "file://";
-      const localUri = `${cacheDir}${fileName}`;
-      const result = await FileSystem.downloadAsync(downloadUrl, localUri, {
+      const localFile = new FileSystem.File(FileSystem.Paths.cache, fileName);
+      const result = await localFile.downloadFileAsync(downloadUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (result.status < 200 || result.status >= 300) {
         throw new Error(`Download failed (${result.status}).`);
       }
-      const canOpen = await Linking.canOpenURL(result.uri);
+      const canOpen = await Linking.canOpenURL(localFile.uri);
       if (!canOpen) throw new Error("No app available to open this PDF.");
-      await Linking.openURL(result.uri);
+      await Linking.openURL(localFile.uri);
     });
 
   const saveSummaryDraft = () => {
