@@ -14,6 +14,8 @@ export interface IEnvSchema extends IRedisCacheConfig {
   DEFAULT_ACCOUNT_FULL_NAME: string;
   DEFAULT_ACCOUNT_EMAIL: string;
   DEFAULT_ACCOUNT_PASSWORD: string;
+  SENDGRID_API_KEY?: string;
+  SENDGRID_FROM?: string;
   SMTP_HOST?: string;
   SMTP_PORT?: number;
   SMTP_USER?: string;

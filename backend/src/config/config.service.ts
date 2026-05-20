@@ -38,6 +38,8 @@ export class ConfigService {
       DEFAULT_ACCOUNT_FULL_NAME: Joi.string().trim().min(1).required(),
       DEFAULT_ACCOUNT_EMAIL: Joi.string().email().required(),
       DEFAULT_ACCOUNT_PASSWORD: Joi.string().trim().min(8).required(),
+      SENDGRID_API_KEY: Joi.string().trim().allow("").optional(),
+      SENDGRID_FROM: Joi.string().email().allow("").optional(),
       SMTP_HOST: Joi.string().trim().allow("").optional(),
       SMTP_PORT: Joi.number().port().empty("").optional(),
       SMTP_USER: Joi.string().trim().allow("").optional(),
@@ -122,6 +124,20 @@ export class ConfigService {
       email: this.get("DEFAULT_ACCOUNT_EMAIL"),
       password: this.get("DEFAULT_ACCOUNT_PASSWORD"),
       isActive: true,
+    };
+  }
+
+  isSendGridConfigured(): boolean {
+    return Boolean(
+      (this.get("SENDGRID_API_KEY") || "").toString().trim() &&
+        (this.get("SENDGRID_FROM") || "").toString().trim(),
+    );
+  }
+
+  getSendGridConfig() {
+    return {
+      apiKey: (this.get("SENDGRID_API_KEY") || "").toString().trim(),
+      from: (this.get("SENDGRID_FROM") || "").toString().trim(),
     };
   }
 
