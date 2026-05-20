@@ -22,6 +22,11 @@ const CHECKUP_FILES_DIRECTORY = join(
   "medical-summary",
   "checkup-files",
 );
+const LEGACY_CHECKUP_FILES_DIRECTORY = join(
+  AppRootPath.path,
+  "uploads",
+  "checkups",
+);
 
 type AdminListResponse = {
   data: Array<Record<string, unknown>>;
@@ -85,6 +90,85 @@ export class MedicalSummaryService {
     return basename(String(value || "").trim());
   }
 
+  private async resolveExistingCheckupFilePath(fileName: string) {
+    const candidatePaths = [
+      join(CHECKUP_FILES_DIRECTORY, fileName),
+      join(LEGACY_CHECKUP_FILES_DIRECTORY, fileName),
+    ];
+
+    for (const absolutePath of candidatePaths) {
+      try {
+        await fs.access(absolutePath);
+        return absolutePath;
+      } catch {
+        continue;
+      }
+    }
+
+    throw new NotFoundException("Checkup file not found.");
+  }
+
+  private normalizeEntry(entry: any, fallbackId?: string) {
+    return {
+      id: String(entry?.id || fallbackId || "").trim() || null,
+      hospitalName: entry?.hospitalName || null,
+      doctorName: entry?.doctorName || null,
+      diseaseStartingYear:
+        entry?.diseaseStartingYear !== undefined && entry?.diseaseStartingYear !== null
+          ? Number(entry.diseaseStartingYear)
+          : null,
+      treatmentDuration: entry?.treatmentDuration || null,
+      treatmentStatus: entry?.treatmentStatus || null,
+      checkupFiles: Array.isArray(entry?.checkupFiles) ? entry.checkupFiles : [],
+      currentMedications: Array.isArray(entry?.currentMedications)
+        ? entry.currentMedications
+        : [],
+      notes: entry?.notes || null,
+    };
+  }
+
+  private buildEntries(summary: any) {
+    const rawEntries = Array.isArray(summary?.entries) ? summary.entries : [];
+    if (rawEntries.length > 0) {
+      return rawEntries.map((entry: any, index: number) =>
+        this.normalizeEntry(entry, `summary-${index + 1}`),
+      );
+    }
+
+    const hasLegacySummary = Boolean(
+      summary?.hospitalName ||
+        summary?.doctorName ||
+        summary?.diseaseStartingYear ||
+        summary?.treatmentDuration ||
+        summary?.treatmentStatus ||
+        summary?.notes ||
+        (Array.isArray(summary?.checkupFiles) && summary.checkupFiles.length > 0) ||
+        (Array.isArray(summary?.currentMedications) &&
+          summary.currentMedications.length > 0),
+    );
+
+    return hasLegacySummary ? [this.normalizeEntry(summary, "summary-1")] : [];
+  }
+
+  private normalizeSummary(summary: any) {
+    if (!summary) return summary;
+    const entries = this.buildEntries(summary);
+    const primary = entries[0] || null;
+
+    return {
+      ...summary,
+      entries,
+      hospitalName: primary?.hospitalName || null,
+      doctorName: primary?.doctorName || null,
+      diseaseStartingYear: primary?.diseaseStartingYear ?? null,
+      treatmentDuration: primary?.treatmentDuration || null,
+      treatmentStatus: primary?.treatmentStatus || null,
+      checkupFiles: primary?.checkupFiles || [],
+      currentMedications: primary?.currentMedications || [],
+      notes: primary?.notes || null,
+    };
+  }
+
   private async ensureUserExists(userId: string) {
     const user = await this.userModel.findOne({
       _id: this.toObjectId(userId),
@@ -100,23 +184,44 @@ export class MedicalSummaryService {
 
   async getByUserId(userId: string) {
     await this.ensureUserExists(userId);
-    return await this.medicalSummaryModel.findOne({
+    const summary = await this.medicalSummaryModel.findOne({
       userId: this.toObjectId(userId),
     });
+    return this.normalizeSummary(summary?.toJSON?.() || summary);
   }
 
   async upsertByUserId(userId: string, payload: UpsertMedicalSummaryDto) {
     await this.ensureUserExists(userId);
 
-    return await this.medicalSummaryModel.findOneAndUpdate(
+    const normalizedEntries = Array.isArray(payload.entries)
+      ? payload.entries.map((entry, index) =>
+          this.normalizeEntry(entry, entry?.id || `summary-${index + 1}`),
+        )
+      : [];
+    const primary = normalizedEntries[0] || this.normalizeEntry(payload, "summary-1");
+
+    const summary = await this.medicalSummaryModel.findOneAndUpdate(
       { userId: this.toObjectId(userId) },
-      payload,
+      {
+        ...payload,
+        entries: normalizedEntries,
+        hospitalName: primary.hospitalName,
+        doctorName: primary.doctorName,
+        diseaseStartingYear: primary.diseaseStartingYear,
+        treatmentDuration: primary.treatmentDuration,
+        treatmentStatus: primary.treatmentStatus,
+        checkupFiles: primary.checkupFiles,
+        currentMedications: primary.currentMedications,
+        notes: primary.notes,
+      },
       {
         upsert: true,
         new: true,
         setDefaultsOnInsert: true,
       },
     );
+
+    return this.normalizeSummary(summary?.toJSON?.() || summary);
   }
 
   async uploadCheckupFile(userId: string, file: Express.Multer.File) {
@@ -160,13 +265,9 @@ export class MedicalSummaryService {
       throw new NotFoundException("Checkup file not found.");
     }
 
-    const absolutePath = join(CHECKUP_FILES_DIRECTORY, normalizedFileName);
-
-    try {
-      await fs.access(absolutePath);
-    } catch {
-      throw new NotFoundException("Checkup file not found.");
-    }
+    const absolutePath = await this.resolveExistingCheckupFilePath(
+      normalizedFileName,
+    );
 
     return {
       absolutePath,
